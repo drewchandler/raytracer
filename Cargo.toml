@@ -1,0 +1,10 @@
+[package]
+name = "raytracer"
+version = "0.1.0"
+authors = ["Drew Chandler <andrewschandler@gmail.com>"]
+
+[[bin]]
+name = "raytracer"
+
+[dependencies]
+image="0.7.0"
