@@ -6,6 +6,7 @@ mod shapes;
 mod object;
 mod point;
 mod ray;
+mod raytracer;
 mod scene;
 mod vector;
 
@@ -38,9 +39,13 @@ fn main() {
         480
     );
 
+    let raytracer = raytracer::Raytracer {
+        camera: camera,
+        scene: scene
+    };
+
     let img = image::ImageBuffer::from_fn(640, 480, |x, y| {
-        let ray = camera.camera_ray(x, y);
-        let color = scene.cast(&ray);
+        let color = raytracer.pixel(x, y);
 
         image::Rgb([color.r, color.g, color.b])
     });

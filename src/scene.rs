@@ -44,14 +44,7 @@ impl Ord for NonNan {
 }
 
 impl Scene {
-    pub fn cast(&self, r: &Ray) -> Color {
-        match self.nearest_interection(&r) {
-            Some(i) => i.object.color.clone(),
-            _ => self.background.clone()
-        }
-    }
-
-    fn nearest_interection(&self, r: &Ray) -> Option<Intersection> {
+    pub fn nearest_interection(&self, r: &Ray) -> Option<Intersection> {
         self.objects.iter()
             .filter_map(|o| {
                 match o.intersect(&r) {
@@ -74,31 +67,30 @@ mod tests {
     use super::super::shapes::sphere::Sphere;
 
     #[test]
-    fn test_cast_no_intersection() {
-        let background = Color::new(0, 0, 0);
+    fn test_nearest_intersection_no_intersection() {
         let s = Scene {
-            background: background.clone(),
+            background: Color::new(0, 0, 0),
             objects: vec![]
         };
 
-        let result = s.cast(&Ray::new(Point::new(0.0, 0.0, 0.0), Vector::new(0.0, 0.0, 1.0)));
+        let result = s.nearest_interection(&Ray::new(Point::new(0.0, 0.0, 0.0), Vector::new(0.0, 0.0, 1.0)));
 
-        assert_eq!(result, background);
+        assert!(result.is_none());
     }
 
     #[test]
-    fn test_cast_uses_closest_object() {
-        let expected_color = Color::new(255, 0, 0);
+    fn test_nearest_intersection_with_intersection() {
+        let nearest_object = Object {
+            shape: Box::new(Sphere::new(
+                Point::new(0.0, 0.0, -50.0),
+                10.0
+            )),
+            color: Color::new(0, 255, 0)
+        };
         let scene = Scene {
-            background: Color::new(0, 0, 0),
+            background: Color::new(255, 0, 0),
             objects: vec![
-                Object {
-                    shape: Box::new(Sphere::new(
-                        Point::new(0.0, 0.0, -50.0),
-                        10.0
-                    )),
-                    color: expected_color.clone()
-                },
+                nearest_object,
                 Object {
                     shape: Box::new(Sphere::new(
                         Point::new(0.0, 0.0, -100.0),
@@ -109,8 +101,8 @@ mod tests {
             ]
         };
 
-        let result = scene.cast(&Ray::new(Point::new(0.0, 0.0, 0.0), Vector::new(0.0, 0.0, -1.0)));
+        let result = scene.nearest_interection(&Ray::new(Point::new(0.0, 0.0, 0.0), Vector::new(0.0, 0.0, -1.0)));
 
-        assert_eq!(result, expected_color);
+        assert_eq!(result.unwrap().distance, 40.0);
     }
 }
