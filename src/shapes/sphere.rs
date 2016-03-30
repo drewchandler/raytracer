@@ -15,13 +15,17 @@ impl Sphere {
 
 impl Shape for Sphere {
     fn intersect(&self, r: &Ray) -> Option<f64> {
-        let a = r.direction.dx.powi(2) + r.direction.dy.powi(2) + r.direction.dz.powi(2);
-        let b = 2.0 * r.direction.dx * (r.origin.x - self.center.x) +
-                2.0 * r.direction.dy * (r.origin.y - self.center.y) +
-                2.0 * r.direction.dz * (r.origin.z - self.center.z);
-        let c = self.center.x.powi(2) + self.center.y.powi(2) + self.center.z.powi(2) +
-                r.origin.x.powi(2) + r.origin.y.powi(2) + r.origin.z.powi(2) +
-                -2.0 * (self.center.x * r.origin.x + self.center.y * r.origin.y + self.center.z * r.origin.z) -
+        let direction = &r.direction;
+        let origin = &r.origin;
+        let center = &self.center;
+
+        let a = direction.dx.powi(2) + direction.dy.powi(2) + direction.dz.powi(2);
+        let b = 2.0 * direction.dx * (origin.x - center.x) +
+                2.0 * direction.dy * (origin.y - center.y) +
+                2.0 * direction.dz * (origin.z - center.z);
+        let c = center.x.powi(2) + center.y.powi(2) + center.z.powi(2) +
+                origin.x.powi(2) + origin.y.powi(2) + origin.z.powi(2) +
+                -2.0 * (center.x * origin.x + center.y * origin.y + center.z * origin.z) -
                 self.radius.powi(2);
 
         let discriminant = b.powi(2) - 4.0 * a * c;
