@@ -1,0 +1,79 @@
+name: Render and publish gallery
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gallery-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RAYTRACER_TOOLING: ${{ github.workspace }}/../raytracer-tools
+
+jobs:
+  build:
+    name: Test and render the current commit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Cache legacy Rust tools and verified dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.RAYTRACER_TOOLING }}
+          key: raytracer-legacy-v1-${{ runner.os }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', 'scripts/prepare.sh') }}
+      - name: Prepare the pinned toolchains
+        run: ./scripts/prepare.sh
+      - name: Test the renderer
+        run: ./scripts/cargo.sh test --locked
+      - name: Build an optimized renderer
+        run: ./scripts/cargo.sh build --release --locked -j 2
+      - name: Generate the gallery from this commit
+        run: >-
+          python3 scripts/build_site.py
+          --renderer "$RAYTRACER_TOOLING/build/target/release/raytracer"
+          --output _site
+      - name: Check gallery generation and failures
+        run: >-
+          python3 scripts/test_site.py
+          --renderer "$RAYTRACER_TOOLING/build/target/release/raytracer"
+      - name: Upload a downloadable gallery preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: raytracer-gallery
+          path: _site/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Package the GitHub Pages site
+        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site/
+
+  deploy:
+    name: Publish GitHub Pages
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check GitHub Pages configuration
+        uses: actions/configure-pages@v5
+      - name: Deploy the rendered gallery
+        id: deployment
+        uses: actions/deploy-pages@v4

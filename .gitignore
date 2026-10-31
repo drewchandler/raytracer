@@ -1,2 +1,6 @@
 .DS_Store
 target
+/out.png
+/renders/
+/_site/
+__pycache__/

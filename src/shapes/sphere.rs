@@ -1,6 +1,7 @@
 use super::super::shapes::Shape;
 use super::super::point::Point;
 use super::super::ray::Ray;
+use super::super::vector::Vector;
 
 pub struct Sphere {
     center: Point,
@@ -9,39 +10,24 @@ pub struct Sphere {
 
 impl Sphere {
     pub fn new(center: Point, radius: f64) -> Sphere {
+        assert!(radius > 0.0 && radius.is_finite(), "Sphere radius must be positive and finite");
         Sphere { center: center, radius: radius }
     }
 }
 
 impl Shape for Sphere {
-    fn intersect(&self, r: &Ray) -> Option<f64> {
-        let direction = &r.direction;
-        let origin = &r.origin;
-        let center = &self.center;
+    fn intersections(&self, r: &Ray) -> Vec<f64> {
+        let offset = r.origin - self.center;
+        let a = r.direction.dot(&r.direction);
+        let half_b = r.direction.dot(&offset);
+        let c = offset.dot(&offset) - self.radius * self.radius;
+        let discriminant = half_b * half_b - a * c;
+        if a == 0.0 || discriminant < 0.0 { return vec![]; }
+        vec![(-half_b - discriminant.sqrt()) / a, (-half_b + discriminant.sqrt()) / a]
+    }
 
-        let a = direction.dx.powi(2) + direction.dy.powi(2) + direction.dz.powi(2);
-        let b = 2.0 * direction.dx * (origin.x - center.x) +
-                2.0 * direction.dy * (origin.y - center.y) +
-                2.0 * direction.dz * (origin.z - center.z);
-        let c = center.x.powi(2) + center.y.powi(2) + center.z.powi(2) +
-                origin.x.powi(2) + origin.y.powi(2) + origin.z.powi(2) +
-                -2.0 * (center.x * origin.x + center.y * origin.y + center.z * origin.z) -
-                self.radius.powi(2);
-
-        let discriminant = b.powi(2) - 4.0 * a * c;
-
-        if discriminant < 0.0 {
-            None
-        } else {
-            let d = (-b - discriminant.sqrt()) / (2.0 * a);
-
-            if d >= 0.0 {
-                Some(d)
-            } else {
-                None
-            }
-        }
-
+    fn normal_at(&self, point: &Point) -> Vector {
+        (*point - self.center).normalize()
     }
 }
 
@@ -52,6 +38,24 @@ mod tests {
     use super::super::super::point::Point;
     use super::super::super::ray::Ray;
     use super::super::super::vector::Vector;
+
+    #[test]
+    fn test_inside_sphere_uses_exit_root() {
+        let s = Sphere::new(Point::new(0.0, 0.0, 0.0), 2.0);
+        let r = Ray::new(Point::new(0.0, 0.0, 0.0), Vector::new(0.0, 0.0, 2.0));
+        assert_eq!(s.intersections(&r), vec![-1.0, 1.0]);
+        assert_eq!(s.intersect(&r), Some(1.0));
+        assert_eq!(s.normal_at(&Point::new(0.0, 2.0, 0.0)), Vector::new(0.0, 1.0, 0.0));
+    }
+
+    #[test]
+    fn test_surface_ray_can_hit_opposite_side() {
+        let s = Sphere::new(Point::new(0.0, 0.0, 0.0), 1.0);
+        let r = Ray::new(Point::new(0.0, 0.0, 1.0), Vector::new(0.0, 0.0, -1.0));
+        assert_eq!(s.intersect(&r), Some(2.0));
+        let tangent = Ray::new(Point::new(0.0, 1.0, -5.0), Vector::new(0.0, 0.0, 1.0));
+        assert_eq!(s.intersect(&tangent), Some(5.0));
+    }
 
     #[test]
     fn test_intersect() {
