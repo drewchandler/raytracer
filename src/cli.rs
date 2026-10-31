@@ -11,6 +11,8 @@ pub const HELP: &'static str = "Usage: raytracer [options]
   --light-samples N      N x N area light samples, 1..64 (default: 3)
   --aperture R           Lens radius; 0 is a pinhole (default: 0)
   --focus D              Focus plane distance in scene units (default: 11)
+  --sky PATH             Equirectangular PNG/JPEG sky (default: procedural clouds in demo)
+  --sky-rotation D       Rotate the sky around the vertical axis in degrees (default: 0)
   -h, --help             Show this help
 
 Use more than one sample per axis with a nonzero aperture for depth of field.
@@ -24,13 +26,15 @@ pub struct Options {
     pub render: RenderSettings,
     pub light_samples: u32,
     pub aperture: f64,
-    pub focus: f64
+    pub focus: f64,
+    pub sky: Option<String>,
+    pub sky_rotation: f64
 }
 
 impl Default for Options {
     fn default() -> Options {
         Options { scene: "demo".to_string(), output: "out.png".to_string(), width: 640, height: 480,
-            render: RenderSettings::default(), light_samples: 3, aperture: 0.0, focus: 11.0 }
+            render: RenderSettings::default(), light_samples: 3, aperture: 0.0, focus: 11.0, sky: None, sky_rotation: 0.0 }
     }
 }
 
@@ -65,6 +69,11 @@ impl Options {
                 "--light-samples" => options.light_samples = try!(integer(flag, value, 1, 64)),
                 "--aperture" => options.aperture = try!(number(flag, value, true)),
                 "--focus" => options.focus = try!(number(flag, value, false)),
+                "--sky" => options.sky = Some(value.to_string()),
+                "--sky-rotation" => options.sky_rotation = match value.parse::<f64>() {
+                    Ok(rotation) if rotation.is_finite() => rotation,
+                    _ => return Err("--sky-rotation must be a finite number".to_string())
+                },
                 "--output" => options.output = value.to_string(),
                 "--scene" => options.scene = value.to_string(),
                 _ => return Err(format!("Unknown option: {} (use --help)", flag))
@@ -103,8 +112,16 @@ mod tests {
         for words in &[vec!["--width", "0"], vec!["--height", "-1"], vec!["--samples", "17"],
             vec!["--depth", "17"], vec!["--focus", "NaN"], vec!["--aperture", "inf"],
             vec!["--scene", "unknown"], vec!["--output", "render.jpg"], vec!["--width"],
-            vec!["--bogus", "3"], vec!["--aperture", "0.1", "--samples", "1"]] {
+            vec!["--bogus", "3"], vec!["--aperture", "0.1", "--samples", "1"],
+            vec!["--sky-rotation", "NaN"], vec!["--sky-rotation", "inf"], vec!["--sky"]] {
             assert!(Options::parse(&args(words)).is_err(), "unexpected success: {:?}", words);
         }
+    }
+
+    #[test]
+    fn parses_custom_sky_and_negative_rotation() {
+        let options = Options::parse(&args(&["--sky", "clouds.png", "--sky-rotation", "-45"])).unwrap().unwrap();
+        assert_eq!(options.sky, Some("clouds.png".to_string()));
+        assert_eq!(options.sky_rotation, -45.0);
     }
 }
