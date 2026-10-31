@@ -8,10 +8,6 @@ use super::raytracer::Raytracer;
 use super::scene::Scene;
 use super::shapes::sphere::Sphere;
 use super::shapes::plane::Plane;
-use super::shapes::cube::Cube;
-use super::shapes::triangle::Triangle;
-use super::shapes::transformed::Transformed;
-use super::transform::Transform;
 use super::vector::Vector;
 
 /// The original two spheres, retained as a flat-color regression/demo scene.
@@ -30,48 +26,44 @@ pub fn original(width: u32, height: u32) -> Raytracer {
     }
 }
 
-/// A small scene exercising the same object/shape architecture with richer materials.
+/// The classic ray-tracing study: polished spheres above a checkerboard.
 pub fn demo(width: u32, height: u32, light_samples: u32) -> Raytracer {
-    let mut scene = Scene::new(Color::new(35, 46, 65));
+    let sky = Color::new(111, 160, 211);
+    let mut scene = Scene::new(sky);
     scene.lights = vec![
-        Light::area(Point::new(-4.0, 7.0, 1.0), Vector::new(4.0, 0.0, 0.0), Vector::new(0.0, 0.0, 3.0),
-            light_samples, Color::new(255, 244, 226), 110.0),
-        Light::directional(Vector::new(-1.0, -2.0, -1.0), Color::new(181, 209, 255), 0.25)
+        Light::area(Point::new(-4.5, 6.5, 3.0), Vector::new(2.0, 0.0, 0.0), Vector::new(0.0, 0.0, 1.5),
+            light_samples, Color::new(255, 247, 231), 105.0),
+        Light::directional(Vector::new(-1.0, -2.0, -1.0), Color::new(190, 216, 255), 0.18)
     ];
 
     let floor = Material {
-        reflective: 0.18, specular: 0.15, shininess: 120.0,
-        pattern: Some(Pattern::Checkers(Color::new(194, 199, 207), Color::new(66, 81, 99), 1.2)),
+        reflective: 0.12, specular: 0.1, shininess: 120.0,
+        pattern: Some(Pattern::Checkers(Color::new(235, 232, 222), Color::new(28, 36, 50), 1.2)),
         ..Material::default()
     };
     scene.objects.push(Object::with_material(
         Box::new(Plane::new(Point::new(0.0, 0.0, 0.0), Vector::new(0.0, 1.0, 0.0))), Color::new(255, 255, 255), floor));
+    // A sky-colored horizon stops the distant checkerboard before its tiles
+    // become smaller than a pixel. It blends into the background above it.
     scene.objects.push(Object::with_material(
-        Box::new(Plane::new(Point::new(0.0, 0.0, -6.0), Vector::new(0.0, 0.0, 1.0))),
-        Color::new(82, 105, 133), Material { specular: 0.0, ..Material::default() }));
+        Box::new(Plane::new(Point::new(0.0, 0.0, -35.0), Vector::new(0.0, 0.0, 1.0))), sky, Material::unlit()));
 
-    scene.objects.push(Object::with_material(Box::new(Sphere::new(Point::new(-1.7, 1.0, -0.4), 1.0)),
-        Color::new(203, 47, 51), Material { reflective: 0.12, shininess: 150.0, ..Material::default() }));
-    scene.objects.push(Object::with_material(Box::new(Sphere::new(Point::new(1.0, 1.0, 0.3), 1.0)),
-        Color::new(245, 252, 255), Material::glass(1.5)));
-    scene.objects.push(Object::with_material(Box::new(Sphere::new(Point::new(-0.3, 0.6, 1.7), 0.6)),
-        Color::new(225, 230, 240), Material { reflective: 0.88, specular: 0.3, shininess: 200.0, ..Material::default() }));
+    // Two large optical studies, with smaller colored spheres for their reflections.
+    scene.objects.push(Object::with_material(Box::new(Sphere::new(Point::new(-1.35, 1.15, -0.35), 1.15)),
+        Color::new(240, 244, 250), Material { reflective: 0.94, specular: 0.6, shininess: 300.0, ..Material::default() }));
+    scene.objects.push(Object::with_material(Box::new(Sphere::new(Point::new(1.25, 1.05, 0.0), 1.05)),
+        Color::new(250, 253, 255), Material::glass(1.5)));
+    scene.objects.push(Object::with_material(Box::new(Sphere::new(Point::new(-0.15, 0.5, 1.9), 0.5)),
+        Color::new(218, 33, 43), Material { reflective: 0.22, specular: 0.65, shininess: 220.0, ..Material::default() }));
 
-    let cube = Transformed::new(Box::new(Cube::new(Point::new(-1.0, -1.0, -1.0), Point::new(1.0, 1.0, 1.0))),
-        Transform::identity().scale(0.7, 0.7, 0.7).rotate_y(-0.3).translate(2.2, 0.7, -2.0));
-    scene.objects.push(Object::new(Box::new(cube), Color::new(46, 155, 116)));
-
-    let triangle = Transformed::new(Box::new(Triangle::new(
-        Point::new(-1.0, 0.0, 0.0), Point::new(1.0, 0.0, 0.0), Point::new(0.0, 2.5, 0.0))),
-        Transform::identity().rotate_y(-0.25).translate(-4.3, 0.0, -0.8));
-    scene.objects.push(Object::with_material(Box::new(triangle), Color::new(232, 163, 63), Material {
-        pattern: Some(Pattern::Stripes(Color::new(232, 163, 63), Color::new(147, 84, 38), 0.3)),
-        reflective: 0.1, ..Material::default()
-    }));
+    scene.objects.push(Object::with_material(Box::new(Sphere::new(Point::new(-3.0, 0.6, -1.7), 0.6)),
+        Color::new(36, 80, 205), Material { reflective: 0.18, specular: 0.6, shininess: 180.0, ..Material::default() }));
+    scene.objects.push(Object::with_material(Box::new(Sphere::new(Point::new(2.9, 0.65, -1.7), 0.65)),
+        Color::new(218, 155, 49), Material { reflective: 0.35, specular: 0.55, shininess: 180.0, ..Material::default() }));
 
     Raytracer {
-        camera: Camera::look_at(Point::new(6.8, 4.0, 8.0), Point::new(0.0, 0.9, -0.4),
-            Vector::new(0.0, 1.0, 0.0), 53.0, width, height),
+        camera: Camera::look_at(Point::new(0.0, 2.6, 8.5), Point::new(0.0, 1.0, 0.0),
+            Vector::new(0.0, 1.0, 0.0), 50.0, width, height),
         scene: scene
     }
 }

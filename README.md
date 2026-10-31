@@ -14,10 +14,11 @@ From `/workspace/raytracer`:
 ./scripts/cargo.sh run --release --locked -- --output out.png
 ```
 
-The default scene has a checkerboard floor, a red sphere, glass and mirror
-spheres, a rotated green box, and a striped triangle. It uses an area light for
-soft shadows and a directional fill light. The executable renders a PNG and
-exits; no server or graphics window is needed. Save failures produce a message
+The default scene is a classic ray-tracing composition: large chrome and glass
+spheres, smaller glossy red, blue, and gold spheres, and a reflective checkerboard
+floor beneath a blue sky. A low, centered camera emphasizes the reflections. It
+uses an area light for soft shadows and a directional fill light. The executable
+renders a PNG and exits; no server or graphics window is needed. Save failures produce a message
 and a nonzero exit status.
 
 ```sh
