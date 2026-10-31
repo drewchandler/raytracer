@@ -112,9 +112,29 @@ def render_profile(renderer, output, preset='preview', **overrides):
     return render(renderer, output, profile=preset, **options)
 
 
+def scene_manifest(scene_file):
+    """Bind a cached animation to the scene and the bytes of every referenced asset."""
+    path = Path(scene_file).resolve(strict=True)
+    document = json.loads(path.read_text())
+    if not isinstance(document, dict):
+        raise ValueError('scene must be a JSON object')
+    if not isinstance(document.get('objects'), list):
+        raise ValueError('{}: objects must be an array'.format(path))
+    files = {str(path): path}
+    for item in document.get('objects', []):
+        if isinstance(item, dict) and item.get('type') == 'mesh' and isinstance(item.get('path'), str):
+            files[item['path']] = path.parent / item['path']
+    environment = document.get('environment', {})
+    if isinstance(environment, dict) and environment.get('type') == 'panorama' and isinstance(environment.get('path'), str):
+        files[environment['path']] = path.parent / environment['path']
+    return dict(path=str(path), files={name: hashlib.sha256(asset.read_bytes()).hexdigest()
+                                      for name, asset in sorted(files.items())})
+
+
 def render(renderer, output, frames=24, fps=12, width=320, height=240, samples=2,
-           step=None, clouds='procedural', depth=5, light_samples=2, start=0.0,
-           loop_duration=None, jobs=1, cache_dir=None, cloud_steps=24, profile='custom', source_commit=None):
+           step=None, clouds=None, depth=5, light_samples=2, start=0.0,
+           loop_duration=None, jobs=1, cache_dir=None, cloud_steps=24, profile='custom', source_commit=None,
+           scene_file=None):
     renderer = Path(renderer).resolve(strict=True)
     output = Path(output).resolve()
     if output.suffix.lower() != '.png':
@@ -125,7 +145,7 @@ def render(renderer, output, frames=24, fps=12, width=320, height=240, samples=2
         raise ValueError('invalid resolution or samples')
     if not 1 <= light_samples <= 64 or not 0 <= depth <= 16 or not 8 <= cloud_steps <= 128:
         raise ValueError('invalid light, bounce, or cloud sampling settings')
-    if clouds not in ('procedural', 'volume'):
+    if clouds not in (None, 'procedural', 'volume'):
         raise ValueError('invalid cloud mode')
     if step is not None and loop_duration is not None:
         raise ValueError('choose linear --step or --loop-duration')
@@ -142,8 +162,12 @@ def render(renderer, output, frames=24, fps=12, width=320, height=240, samples=2
     binary_hash = hashlib.sha256(renderer.read_bytes()).hexdigest()
     settings = dict(frames=frames, fps=fps, width=width, height=height,
                     samples_per_axis=samples, light_samples_per_axis=light_samples,
-                    max_depth=depth, cloud_steps=cloud_steps, times=times, clouds=clouds,
+                    max_depth=depth, cloud_steps=cloud_steps, times=times,
+                    clouds=clouds or ('scene' if scene_file is not None else 'procedural'),
                     loop_duration=loop_duration, renderer_sha256=binary_hash)
+    if scene_file is not None:
+        scene_file = Path(scene_file).resolve(strict=True)
+        settings['scene'] = scene_manifest(scene_file)
     key = hashlib.sha256(json.dumps(settings, sort_keys=True).encode()).hexdigest()
     output.parent.mkdir(parents=True, exist_ok=True)
     storage = nullcontext(str(Path(cache_dir).resolve() / key)) if cache_dir else tempfile.TemporaryDirectory()
@@ -173,9 +197,13 @@ def render(renderer, output, frames=24, fps=12, width=320, height=240, samples=2
                 pending = path.with_name(path.stem + '.pending.png')
                 command = [str(renderer), '--width', str(width), '--height', str(height),
                            '--samples', str(samples), '--depth', str(depth),
-                           '--light-samples', str(light_samples), '--clouds', clouds,
+                           '--light-samples', str(light_samples),
                            '--cloud-steps', str(cloud_steps), '--time', str(times[index]),
                            '--output', str(pending)]
+                if scene_file is not None:
+                    command += ['--scene-file', str(scene_file)]
+                if clouds is not None or scene_file is None:
+                    command += ['--clouds', clouds or 'procedural']
                 if loop_duration is not None:
                     command += ['--cloud-loop', str(loop_duration)]
                 result = subprocess.run(command, capture_output=True, text=True)
@@ -224,10 +252,11 @@ def main():
     parser.add_argument('--step', type=float, help='explicit linear wind instead of a seamless loop')
     parser.add_argument('--loop-duration', type=float)
     parser.add_argument('--start', type=float, default=0.0)
-    parser.add_argument('--clouds', choices=('procedural', 'volume'), default='procedural')
+    parser.add_argument('--clouds', choices=('procedural', 'volume'), help='override the scene environment')
     parser.add_argument('--jobs', type=int)
     parser.add_argument('--cache-dir', type=Path, help='resume completed frames with matching settings and renderer')
     parser.add_argument('--source-commit', help='source commit for publication provenance (default: GITHUB_SHA)')
+    parser.add_argument('--scene-file', type=Path, help='animate an editable JSON scene')
     args = parser.parse_args()
     options = vars(args).copy()
     renderer, output, preset = (options.pop(k) for k in ('renderer', 'output', 'preset'))
@@ -238,7 +267,7 @@ def main():
         options['cache_dir'] = Path('renders/.animation-cache')
     try:
         render_profile(renderer, output, preset, **options)
-    except ValueError as error:
+    except (ValueError, OSError, RuntimeError) as error:
         parser.error(str(error))
 
 

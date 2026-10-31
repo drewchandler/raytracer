@@ -1,0 +1,140 @@
+{
+  "$schema": "./scene.schema.json",
+  "version": 1,
+  "title": "Glass garden",
+  "description": "Nested glass, frosted crystal, and polished metal above a dark reflective floor.",
+  "render": {
+    "width": 640,
+    "height": 480,
+    "samples": 4,
+    "light_samples": 3,
+    "depth": 7
+  },
+  "camera": {
+    "from": [6.5, 4.6, 10],
+    "at": [0, 1.05, -0.3],
+    "fov": 44,
+    "aperture": 0.018,
+    "focus": 12.3
+  },
+  "materials": {
+    "floor": {
+      "reflective": 0.48,
+      "specular": 0.2,
+      "pattern": {
+        "type": "checkers",
+        "color_a": [34, 41, 56],
+        "color_b": [12, 18, 28],
+        "size": 1.5
+      }
+    },
+    "clear": {
+      "preset": "glass"
+    },
+    "air": {
+      "preset": "glass",
+      "refractive_index": 1,
+      "specular": 0
+    },
+    "rose": {
+      "preset": "glass",
+      "color": [255, 221, 235]
+    },
+    "ice": {
+      "preset": "glass",
+      "color": [219, 242, 255],
+      "transmission_roughness": 0.12,
+      "roughness": 0.05
+    },
+    "chrome": {
+      "preset": "mirror",
+      "color": [228, 236, 245]
+    },
+    "gold": {
+      "color": [231, 161, 50],
+      "reflective": 0.6,
+      "roughness": 0.06
+    }
+  },
+  "lights": [
+    {
+      "type": "area",
+      "corner": [-4.5, 7, 2],
+      "u": [3, 0, 0],
+      "v": [0, 0, 2],
+      "color": [255, 242, 224],
+      "intensity": 160
+    },
+    {
+      "type": "directional",
+      "direction": [-1, -2, -1],
+      "color": [190, 215, 255],
+      "intensity": 0.2
+    }
+  ],
+  "objects": [
+    {
+      "type": "plane",
+      "material": "floor"
+    },
+    {
+      "type": "sphere",
+      "material": "clear",
+      "center": [-1.6, 1.15, -0.8],
+      "radius": 1.15
+    },
+    {
+      "type": "sphere",
+      "material": "air",
+      "center": [-1.6, 1.15, -0.8],
+      "radius": 0.92
+    },
+    {
+      "type": "sphere",
+      "material": "rose",
+      "center": [1.05, 1.0, 0.5],
+      "radius": 1
+    },
+    {
+      "type": "sphere",
+      "material": "ice",
+      "center": [0.2, 0.6, 2],
+      "radius": 0.6
+    },
+    {
+      "type": "sphere",
+      "material": "chrome",
+      "center": [-2.8, 0.5, 1.4],
+      "radius": 0.5
+    },
+    {
+      "type": "sphere",
+      "material": "gold",
+      "center": [2.8, 0.55, -1.6],
+      "radius": 0.55
+    },
+    {
+      "type": "cube",
+      "material": "ice",
+      "transform": [
+        {
+          "scale": [0.55, 1.55, 0.55]
+        },
+        {
+          "rotate_y": 28
+        },
+        {
+          "translate": [1.35, 1.55, -2.5]
+        }
+      ]
+    }
+  ],
+  "environment": {
+    "type": "clouds",
+    "seed": 17
+  },
+  "haze": {
+    "start": 25,
+    "end": 110
+  }
+}

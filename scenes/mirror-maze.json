@@ -1,0 +1,132 @@
+{
+  "$schema": "./scene.schema.json",
+  "version": 1,
+  "title": "Mirror maze",
+  "description": "Colored lights and glass repeat into the distance between polished mirrors.",
+  "render": {
+    "width": 640,
+    "height": 480,
+    "samples": 4,
+    "light_samples": 3,
+    "depth": 7
+  },
+  "camera": {
+    "from": [6.8, 4.1, 9.5],
+    "at": [-0.5, 1.1, -1],
+    "fov": 48
+  },
+  "materials": {
+    "mirror": {
+      "preset": "mirror",
+      "reflective": 0.94
+    },
+    "glass": {
+      "preset": "glass"
+    },
+    "floor": {
+      "reflective": 0.3,
+      "specular": 0.3,
+      "pattern": {
+        "type": "checkers",
+        "color_a": [37, 39, 59],
+        "color_b": [9, 11, 19],
+        "size": 1
+      }
+    },
+    "pink": {
+      "color": [243, 33, 139],
+      "reflective": 0.32,
+      "shininess": 200
+    },
+    "cyan": {
+      "color": [22, 219, 238],
+      "reflective": 0.4,
+      "shininess": 200
+    },
+    "gold": {
+      "color": [245, 175, 45],
+      "reflective": 0.65,
+      "roughness": 0.04
+    }
+  },
+  "lights": [
+    {
+      "type": "area",
+      "corner": [-1, 6, 2],
+      "u": [3, 0, 0],
+      "v": [0, 0, 2],
+      "color": [255, 245, 233],
+      "intensity": 95
+    },
+    {
+      "type": "point",
+      "position": [3, 3, -2.5],
+      "color": [28, 215, 255],
+      "intensity": 12
+    },
+    {
+      "type": "point",
+      "position": [-2.8, 2.5, 2.5],
+      "color": [255, 43, 152],
+      "intensity": 10
+    }
+  ],
+  "objects": [
+    {
+      "type": "plane",
+      "material": "floor"
+    },
+    {
+      "type": "plane",
+      "point": [0, 0, -4],
+      "normal": [0, 0, 1],
+      "material": "mirror"
+    },
+    {
+      "type": "plane",
+      "point": [-4, 0, 0],
+      "normal": [1, 0, 0],
+      "material": "mirror"
+    },
+    {
+      "type": "sphere",
+      "material": "pink",
+      "center": [-1.4, 0.8, 0.4],
+      "radius": 0.8
+    },
+    {
+      "type": "sphere",
+      "material": "cyan",
+      "center": [1.6, 0.65, -1.5],
+      "radius": 0.65
+    },
+    {
+      "type": "sphere",
+      "material": "gold",
+      "center": [-1.6, 0.5, -2.7],
+      "radius": 0.5
+    },
+    {
+      "type": "sphere",
+      "material": "glass",
+      "center": [0.5, 1.1, 1.6],
+      "radius": 1.1
+    },
+    {
+      "type": "cube",
+      "material": "mirror",
+      "transform": [
+        {
+          "scale": [0.65, 1.25, 0.65]
+        },
+        {
+          "rotate_y": 25
+        },
+        {
+          "translate": [-2.3, 1.25, 2.2]
+        }
+      ]
+    }
+  ],
+  "background": [12, 17, 31]
+}

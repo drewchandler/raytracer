@@ -97,6 +97,41 @@ class AnimationTests(unittest.TestCase):
                     render(self.renderer,output,frames=2,width=1,height=1,jobs=1)
             self.assertEqual(output.read_bytes(),b'keep')
 
+    def test_scene_animation_keeps_the_environment_and_supports_overrides(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);scene=root/'scene.json'
+            scene.write_text(json.dumps(dict(version=1,camera={'from':[0,0,3],'at':[0,1,0]},
+                                            environment={'type':'volume','seed':31},objects=[])))
+            options=dict(frames=2,fps=2,width=24,height=18,samples=1,depth=1,light_samples=1,
+                         cloud_steps=8,scene_file=scene)
+            result=render(self.renderer,root/'volume.png',**options)
+            self.assertIn('scene',result)
+            render(self.renderer,root/'sky.png',clouds='procedural',**options)
+            self.assertNotEqual((root/'volume-still.png').read_bytes(),(root/'sky-still.png').read_bytes())
+
+    def test_scene_cache_tracks_scene_mesh_and_panorama_contents(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);binary=root/'renderer';binary.write_bytes(b'renderer')
+            scene=root/'scene.json';mesh=root/'model.obj';sky=root/'sky.png'
+            mesh.write_text('v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n');sky.write_bytes(pixel((20,30,40)))
+            document=dict(version=1,camera={'from':[0,0,3],'at':[0,0,0]},
+                          environment={'type':'panorama','path':'sky.png'},objects=[{'type':'mesh','path':'model.obj'}])
+            scene.write_text(json.dumps(document))
+            def frame(command,**kwargs):
+                self.assertIn(str(scene),command)
+                self.assertNotIn('--clouds',command)
+                Path(command[command.index('--output')+1]).write_bytes(pixel((255,0,0)))
+                return subprocess.CompletedProcess(command,0,'','')
+            options=dict(frames=2,width=1,height=1,scene_file=scene,cache_dir=root/'cache')
+            def run(expected):
+                with patch('render_animation.subprocess.run',side_effect=frame) as call:
+                    render(binary,root/'out.png',**options)
+                    self.assertEqual(call.call_count,expected)
+            run(2);run(0)
+            document['title']='Edited scene';scene.write_text(json.dumps(document));run(2)
+            mesh.write_text(mesh.read_text().replace('v 1 0 0','v 2 0 0'));run(2)
+            sky.write_bytes(pixel((70,80,90)));run(2)
+
     def test_publication_checks_source_and_actual_timing(self):
         from attach_animation import attach,validate
         from build_site import generate

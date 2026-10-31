@@ -1,0 +1,674 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Raytracer scene, version 1",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "const": 1
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "render": {
+      "type": "object",
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "samples": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "light_samples": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16
+        }
+      },
+      "additionalProperties": false
+    },
+    "camera": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/triple"
+        },
+        "at": {
+          "$ref": "#/$defs/triple"
+        },
+        "up": {
+          "$ref": "#/$defs/triple"
+        },
+        "fov": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 179
+        },
+        "aperture": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000.0
+        },
+        "focus": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "at"
+      ]
+    },
+    "background": {
+      "$ref": "#/$defs/color"
+    },
+    "ambient": {
+      "$ref": "#/$defs/color"
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "clouds",
+            "volume",
+            "panorama"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "rotation": {
+          "type": "number"
+        },
+        "time": {
+          "type": "number",
+          "minimum": -1000000.0,
+          "maximum": 1000000.0
+        },
+        "loop_duration": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "steps": {
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 128
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "panorama"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "path"
+            ]
+          }
+        }
+      ]
+    },
+    "haze": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000000000.0
+        },
+        "end": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "start",
+        "end"
+      ]
+    },
+    "materials": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/material"
+      },
+      "propertyNames": {
+        "minLength": 1
+      }
+    },
+    "lights": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "point"
+              },
+              "color": {
+                "$ref": "#/$defs/color"
+              },
+              "intensity": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1000000000000.0
+              },
+              "position": {
+                "$ref": "#/$defs/triple"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "type",
+              "position"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "directional"
+              },
+              "color": {
+                "$ref": "#/$defs/color"
+              },
+              "intensity": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1000000000000.0
+              },
+              "direction": {
+                "$ref": "#/$defs/triple"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "type",
+              "direction"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "area"
+              },
+              "color": {
+                "$ref": "#/$defs/color"
+              },
+              "intensity": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1000000000000.0
+              },
+              "corner": {
+                "$ref": "#/$defs/triple"
+              },
+              "u": {
+                "$ref": "#/$defs/triple"
+              },
+              "v": {
+                "$ref": "#/$defs/triple"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "type",
+              "corner",
+              "u",
+              "v"
+            ]
+          }
+        ]
+      }
+    },
+    "objects": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "sphere"
+              },
+              "name": {
+                "type": "string"
+              },
+              "color": {
+                "$ref": "#/$defs/color"
+              },
+              "material": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/material"
+                  }
+                ]
+              },
+              "transform": {
+                "$ref": "#/$defs/transforms"
+              },
+              "center": {
+                "$ref": "#/$defs/triple"
+              },
+              "radius": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "plane"
+              },
+              "name": {
+                "type": "string"
+              },
+              "color": {
+                "$ref": "#/$defs/color"
+              },
+              "material": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/material"
+                  }
+                ]
+              },
+              "transform": {
+                "$ref": "#/$defs/transforms"
+              },
+              "point": {
+                "$ref": "#/$defs/triple"
+              },
+              "normal": {
+                "$ref": "#/$defs/triple"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "cube"
+              },
+              "name": {
+                "type": "string"
+              },
+              "color": {
+                "$ref": "#/$defs/color"
+              },
+              "material": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/material"
+                  }
+                ]
+              },
+              "transform": {
+                "$ref": "#/$defs/transforms"
+              },
+              "min": {
+                "$ref": "#/$defs/triple"
+              },
+              "max": {
+                "$ref": "#/$defs/triple"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "triangle"
+              },
+              "name": {
+                "type": "string"
+              },
+              "color": {
+                "$ref": "#/$defs/color"
+              },
+              "material": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/material"
+                  }
+                ]
+              },
+              "transform": {
+                "$ref": "#/$defs/transforms"
+              },
+              "vertices": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/triple"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "type",
+              "vertices"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "mesh"
+              },
+              "name": {
+                "type": "string"
+              },
+              "color": {
+                "$ref": "#/$defs/color"
+              },
+              "material": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/material"
+                  }
+                ]
+              },
+              "transform": {
+                "$ref": "#/$defs/transforms"
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "fit": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "type",
+              "path"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "camera",
+    "objects"
+  ],
+  "$defs": {
+    "triple": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "color": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255
+      },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "material": {
+      "type": "object",
+      "properties": {
+        "preset": {
+          "enum": [
+            "default",
+            "glass",
+            "mirror",
+            "unlit"
+          ]
+        },
+        "color": {
+          "$ref": "#/$defs/color"
+        },
+        "ambient": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "diffuse": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "specular": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "reflective": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "transparency": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "roughness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "transmission_roughness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "shininess": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 1000000000.0
+        },
+        "refractive_index": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "pattern": {
+          "$ref": "#/$defs/pattern"
+        },
+        "bump": {
+          "type": "object",
+          "properties": {
+            "scale": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "strength": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000000.0
+            },
+            "seed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "scale",
+            "strength"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "pattern": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "checkers",
+            "checkers3d",
+            "stripes",
+            "marble",
+            "wood",
+            "stone"
+          ]
+        },
+        "color_a": {
+          "$ref": "#/$defs/color"
+        },
+        "color_b": {
+          "$ref": "#/$defs/color"
+        },
+        "size": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "color_a",
+        "color_b",
+        "size"
+      ]
+    },
+    "transforms": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "scale": {
+                "$ref": "#/$defs/triple"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "scale"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "translate": {
+                "$ref": "#/$defs/triple"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "translate"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "rotate_x": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "rotate_x"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "rotate_y": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "rotate_y"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "rotate_z": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "rotate_z"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
