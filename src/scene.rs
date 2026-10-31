@@ -2,12 +2,29 @@ use super::color::{Color, LinearColor};
 use super::light::Light;
 use super::object::Object;
 use super::ray::{Ray, EPSILON};
+use super::texture::Environment;
+use super::vector::Vector;
 
 pub struct Scene {
     pub background: Color,
+    pub environment: Option<Environment>,
+    pub haze: Option<Haze>,
     pub ambient: Color,
     pub objects: Vec<Object>,
     pub lights: Vec<Light>
+}
+
+/// An artistic distance fade for the horizon; foreground geometry stays crisp.
+pub struct Haze {
+    start: f64,
+    end: f64
+}
+
+impl Haze {
+    pub fn new(start: f64, end: f64) -> Haze {
+        assert!(start.is_finite() && end.is_finite() && start >= 0.0 && end > start);
+        Haze { start: start, end: end }
+    }
 }
 
 pub struct Intersection<'a> {
@@ -18,7 +35,26 @@ pub struct Intersection<'a> {
 
 impl Scene {
     pub fn new(background: Color) -> Scene {
-        Scene { background: background, ambient: Color::new(255, 255, 255), objects: vec![], lights: vec![] }
+        Scene { background: background, environment: None, haze: None, ambient: Color::new(255, 255, 255), objects: vec![], lights: vec![] }
+    }
+
+    pub fn background_at(&self, direction: &Vector) -> LinearColor {
+        match self.environment {
+            Some(ref environment) => environment.sample(direction),
+            None => self.background.linear()
+        }
+    }
+
+    pub fn apply_haze(&self, color: LinearColor, distance: f64, direction: &Vector) -> LinearColor {
+        match self.haze {
+            Some(ref haze) => {
+                let t = ((distance - haze.start) / (haze.end - haze.start)).max(0.0).min(1.0);
+                let amount = t * t * (3.0 - 2.0 * t);
+                if amount == 0.0 { return color; }
+                color * (1.0 - amount) + self.background_at(direction) * amount
+            },
+            None => color
+        }
     }
 
     /// Keep negative hits as well: they tell us which volumes contain the ray origin.
@@ -87,7 +123,7 @@ impl Scene {
 
 #[cfg(test)]
 mod tests {
-    use super::Scene;
+    use super::{Scene, Haze};
     use super::super::color::{Color, LinearColor};
     use super::super::material::Material;
     use super::super::point::Point;
@@ -106,6 +142,21 @@ mod tests {
         let s = Scene::new(Color::new(0, 0, 0));
         assert!(s.nearest_interection(&Ray::new(Point::new(0.0, 0.0, 0.0), Vector::new(0.0, 0.0, 1.0))).is_none());
     }
+
+    #[test]
+    fn horizon_haze_preserves_foreground_and_fades_in_linear_light() {
+        let mut scene = Scene::new(Color::new(0, 0, 255));
+        scene.haze = Some(Haze::new(20.0, 100.0));
+        let red = Color::new(255, 0, 0).linear();
+        let direction = Vector::new(0.0, 0.0, -1.0);
+        assert_eq!(scene.apply_haze(red, 10.0, &direction), red);
+        assert_eq!(scene.apply_haze(red, 60.0, &direction), LinearColor::new(0.5, 0.0, 0.5));
+        assert_eq!(scene.apply_haze(red, 1000.0, &direction), scene.background.linear());
+    }
+
+    #[test]
+    #[should_panic]
+    fn haze_rejects_an_invalid_range() { Haze::new(20.0, 10.0); }
 
     #[test]
     fn test_nearest_intersection_with_intersection() {

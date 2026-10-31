@@ -16,7 +16,7 @@ From `/workspace/raytracer`:
 
 The default scene is a classic ray-tracing composition: large chrome and glass
 spheres, smaller glossy red, blue, and gold spheres, and a reflective checkerboard
-floor beneath a blue sky. A low, centered camera emphasizes the reflections. It
+floor beneath a procedural cloudy sky. A low, centered camera emphasizes the reflections. It
 uses an area light for soft shadows and a directional fill light. The executable
 renders a PNG and exits; no server or graphics window is needed. Save failures produce a message
 and a nonzero exit status.
@@ -36,6 +36,23 @@ and a nonzero exit status.
 
 ./scripts/cargo.sh run --release --locked -- --help
 ```
+
+The default sky uses seeded fractal noise, a daylight gradient, and shaded cloud
+banks. It is continuous around the entire sky dome, including the reflected
+view. A light distance haze fades the far checkerboard into the horizon without
+softening the foreground. It needs no external image files. To use your own sky texture instead:
+
+```sh
+./scripts/cargo.sh run --release --locked -- --sky clouds.png --sky-rotation 45
+```
+
+Use an equirectangular latitude/longitude panorama (usually a 2:1 PNG or JPEG).
+The top row is the zenith and the bottom row is the nadir. Rotation is in degrees
+around the vertical axis; negative angles are allowed. Panoramas wrap
+horizontally, clamp at the poles, and use bilinear filtering in linear light.
+The sky appears in the background, mirrors, and glass. Scene lights still provide
+direct illumination; the environment does not add path-traced indirect lighting.
+The original scene keeps its flat background unless `--sky` is supplied.
 
 Defaults are 640×480, 2×2 pixel samples, 3×3 area-light samples, and five
 reflection/refraction bounces. Samples are deterministic, so repeated renders
@@ -126,11 +143,13 @@ The generated site is ignored by Git.
   of view, subpixel sampling, and optional thin-lens depth of field.
 - Floating-point linear-light accumulation for shading and antialiasing, with
   sRGB decoding for scene colors and sRGB encoding/clamping only at output.
+- Environment textures: a deterministic cloudy sky or panoramic image textures,
+  with rotation and seamless sampling in backgrounds, reflections, and refractions.
 - CLI controls for scene, output, resolution, antialiasing, area-light samples,
   recursion depth, aperture, and focus distance.
 
 This is a Whitted-style renderer with direct lighting. It does not implement
-path-traced indirect illumination, caustics, volumetrics, image-file textures,
+path-traced indirect illumination, caustics, volumetrics, image textures on object surfaces,
 mesh loading, or spatial acceleration. Intersection search is linear in object
 count, appropriate for the small procedural scenes here. Glass shadows use
 straight filtered rays rather than solving refracted light paths; tint is

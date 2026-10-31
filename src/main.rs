@@ -14,6 +14,7 @@ mod raytracer;
 mod scene;
 mod vector;
 mod transform;
+mod texture;
 
 use std::{env, io, process};
 use std::io::Write;
@@ -30,6 +31,13 @@ fn run() -> Result<(), String> {
     } else {
         demo::demo(options.width, options.height, options.light_samples)
     };
+    if let Some(ref path) = options.sky {
+        raytracer.scene.environment = Some(try!(texture::Environment::load(path)
+            .map_err(|error| format!("Could not load sky {}: {}", path, error))));
+    }
+    if let Some(ref mut environment) = raytracer.scene.environment {
+        environment.set_rotation(options.sky_rotation);
+    }
     raytracer.camera = raytracer.camera.with_lens(options.aperture, options.focus);
     let start = Instant::now();
     println!("Rendering {} at {}x{}, {} samples/pixel, {} bounces...", options.scene, options.width, options.height,

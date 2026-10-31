@@ -101,7 +101,7 @@ impl Raytracer {
         let intersections = self.scene.intersections(ray);
         let index = match intersections.iter().position(|i| i.distance > EPSILON) {
             Some(index) => index,
-            None => return self.scene.background.linear()
+            None => return self.scene.background_at(&ray.direction)
         };
         let hit = &intersections[index];
         let material = &hit.object.material;
@@ -117,7 +117,7 @@ impl Raytracer {
         // Share energy between the local surface, mirror, and glass components.
         let local_weight = (1.0 - material.reflective) * (1.0 - material.transparency);
         let mut result = local * local_weight + specular;
-        if remaining == 0 { return result; }
+        if remaining == 0 { return self.scene.apply_haze(result, hit.distance * ray.direction.magnitude(), &ray.direction); }
 
         let (n1, n2) = self.scene.refractive_indices(index, &intersections);
         let fresnel = if material.transparency > 0.0 { schlick(eye.dot(&normal), n1, n2) } else { 0.0 };
@@ -133,7 +133,7 @@ impl Raytracer {
                 result = result + self.trace(&refracted, remaining - 1) * transmitted_weight * hit.object.color_at(&point).linear();
             }
         }
-        result
+        self.scene.apply_haze(result, hit.distance * ray.direction.magnitude(), &ray.direction)
     }
 
     fn lighting(&self, object: &Object, point: &Point, over: &Point, normal: &Vector, eye: &Vector) -> (LinearColor, LinearColor) {
@@ -171,6 +171,7 @@ mod tests {
     use super::super::shapes::sphere::Sphere;
     use super::super::shapes::plane::Plane;
     use super::super::vector::Vector;
+    use super::super::texture::{Environment, ImageTexture};
 
     fn tracer(scene: Scene) -> Raytracer {
         Raytracer { camera: Camera::new(Point::new(0.0, 0.0, 1.0), Vector::new(0.0, 1.0, 0.0),
@@ -185,6 +186,22 @@ mod tests {
     fn test_pixel_use_background_when_no_intersection() {
         let background = Color::new(12, 34, 56);
         assert_eq!(tracer(Scene::new(background)).pixel(0, 0), background);
+    }
+
+    #[test]
+    fn environment_is_sampled_by_primary_reflected_and_refracted_rays() {
+        let image = ::image::ImageBuffer::from_fn(2, 1, |x, _| {
+            if x == 0 { ::image::Rgb([255, 0, 0]) } else { ::image::Rgb([0, 0, 255]) }
+        });
+        let mut scene = Scene::new(Color::new(0, 255, 0));
+        scene.environment = Some(Environment::panorama(ImageTexture::from_image(image)));
+        let mut raytracer = tracer(scene);
+        assert_eq!(raytracer.trace(&front_ray(), 0).to_color(), Color::new(0, 0, 255));
+        let mirror = Material { reflective: 1.0, specular: 0.0, ..Material::default() };
+        raytracer.scene.objects.push(Object::with_material(Box::new(Sphere::new(Point::new(0.0, 0.0, 0.0), 1.0)), Color::new(255, 255, 255), mirror));
+        assert_eq!(raytracer.trace(&front_ray(), 1).to_color(), Color::new(255, 0, 0));
+        raytracer.scene.objects[0].material = Material::glass(1.0);
+        assert_eq!(raytracer.trace(&front_ray(), 2).to_color(), Color::new(0, 0, 255));
     }
 
     #[test]

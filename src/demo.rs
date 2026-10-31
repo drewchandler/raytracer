@@ -5,10 +5,11 @@ use super::material::{Material, Pattern};
 use super::object::Object;
 use super::point::Point;
 use super::raytracer::Raytracer;
-use super::scene::Scene;
+use super::scene::{Scene, Haze};
 use super::shapes::sphere::Sphere;
 use super::shapes::plane::Plane;
 use super::vector::Vector;
+use super::texture::Environment;
 
 /// The original two spheres, retained as a flat-color regression/demo scene.
 pub fn original(width: u32, height: u32) -> Raytracer {
@@ -30,6 +31,8 @@ pub fn original(width: u32, height: u32) -> Raytracer {
 pub fn demo(width: u32, height: u32, light_samples: u32) -> Raytracer {
     let sky = Color::new(111, 160, 211);
     let mut scene = Scene::new(sky);
+    scene.environment = Some(Environment::cloudy(17));
+    scene.haze = Some(Haze::new(20.0, 100.0));
     scene.lights = vec![
         Light::area(Point::new(-4.5, 6.5, 3.0), Vector::new(2.0, 0.0, 0.0), Vector::new(0.0, 0.0, 1.5),
             light_samples, Color::new(255, 247, 231), 105.0),
@@ -43,11 +46,6 @@ pub fn demo(width: u32, height: u32, light_samples: u32) -> Raytracer {
     };
     scene.objects.push(Object::with_material(
         Box::new(Plane::new(Point::new(0.0, 0.0, 0.0), Vector::new(0.0, 1.0, 0.0))), Color::new(255, 255, 255), floor));
-    // A sky-colored horizon stops the distant checkerboard before its tiles
-    // become smaller than a pixel. It blends into the background above it.
-    scene.objects.push(Object::with_material(
-        Box::new(Plane::new(Point::new(0.0, 0.0, -35.0), Vector::new(0.0, 0.0, 1.0))), sky, Material::unlit()));
-
     // Two large optical studies, with smaller colored spheres for their reflections.
     scene.objects.push(Object::with_material(Box::new(Sphere::new(Point::new(-1.35, 1.15, -0.35), 1.15)),
         Color::new(240, 244, 250), Material { reflective: 0.94, specular: 0.6, shininess: 300.0, ..Material::default() }));
