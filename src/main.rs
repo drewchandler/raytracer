@@ -1,7 +1,11 @@
 extern crate image;
 
 mod camera;
+mod cli;
 mod color;
+mod demo;
+mod light;
+mod material;
 mod shapes;
 mod object;
 mod point;
@@ -9,46 +13,36 @@ mod ray;
 mod raytracer;
 mod scene;
 mod vector;
+mod transform;
+
+use std::{env, io, process};
+use std::io::Write;
+use std::time::Instant;
+
+fn run() -> Result<(), String> {
+    let args: Vec<String> = env::args().skip(1).collect();
+    let options = match try!(cli::Options::parse(&args)) {
+        Some(options) => options,
+        None => { println!("{}", cli::HELP); return Ok(()); }
+    };
+    let mut raytracer = if options.scene == "original" {
+        demo::original(options.width, options.height)
+    } else {
+        demo::demo(options.width, options.height, options.light_samples)
+    };
+    raytracer.camera = raytracer.camera.with_lens(options.aperture, options.focus);
+    let start = Instant::now();
+    println!("Rendering {} at {}x{}, {} samples/pixel, {} bounces...", options.scene, options.width, options.height,
+        options.render.samples_per_axis * options.render.samples_per_axis, options.render.max_depth);
+    let image = raytracer.render(&options.render);
+    try!(image.save(&options.output).map_err(|error| format!("Could not save {}: {}", options.output, error)));
+    println!("Saved {} ({:?})", options.output, start.elapsed());
+    Ok(())
+}
 
 fn main() {
-    let scene = scene::Scene {
-        background: color::Color::new(0, 149, 205),
-        objects: vec![
-            object::Object {
-                shape: Box::new(shapes::sphere::Sphere::new(
-                    point::Point::new(0.0, 0.0, -350.0),
-                    300.0
-                )),
-                color: color::Color::new(255, 0, 0)
-            },
-            object::Object {
-                shape: Box::new(shapes::sphere::Sphere::new(
-                    point::Point::new(-250.0, -250.0, -500.0),
-                    300.0
-                )),
-                color: color::Color::new(0, 255, 0)
-            }
-        ]
-    };
-    let camera = camera::Camera::new(
-        point::Point::new(0.0, 0.0, 100.0),
-        vector::Vector::new(0.0, 1.0, 0.0),
-        vector::Vector::new(0.0, 0.0, 1.0),
-        100.0,
-        640,
-        480
-    );
-
-    let raytracer = raytracer::Raytracer {
-        camera: camera,
-        scene: scene
-    };
-
-    let img = image::ImageBuffer::from_fn(640, 480, |x, y| {
-        let color = raytracer.pixel(x, y);
-
-        image::Rgb([color.r, color.g, color.b])
-    });
-
-    let _ = img.save("out.png");
+    if let Err(error) = run() {
+        let _ = writeln!(&mut io::stderr(), "Error: {}", error);
+        process::exit(1);
+    }
 }

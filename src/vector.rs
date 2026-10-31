@@ -1,6 +1,6 @@
-use std::ops::Add;
+use std::ops::{Add, Sub, Neg};
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Vector {
     pub dx: f64,
     pub dy: f64,
@@ -18,6 +18,7 @@ impl Vector {
 
     pub fn normalize(&self) -> Vector {
         let magnitude = self.magnitude();
+        assert!(magnitude > 0.0 && magnitude.is_finite(), "Cannot normalize a zero or non-finite vector");
 
         Vector::new(
             self.dx / magnitude,
@@ -41,6 +42,31 @@ impl Vector {
             self.dz * scalar
         )
     }
+
+    pub fn dot(&self, other: &Vector) -> f64 {
+        self.dx * other.dx + self.dy * other.dy + self.dz * other.dz
+    }
+
+    /// Reflect an incoming direction about a unit surface normal.
+    pub fn reflect(&self, normal: &Vector) -> Vector {
+        *self - normal.scale(2.0 * self.dot(normal))
+    }
+}
+
+impl Sub for Vector {
+    type Output = Vector;
+
+    fn sub(self, other: Vector) -> Vector {
+        self + other.scale(-1.0)
+    }
+}
+
+impl Neg for Vector {
+    type Output = Vector;
+
+    fn neg(self) -> Vector {
+        self.scale(-1.0)
+    }
 }
 
 impl Add for Vector {
@@ -58,6 +84,20 @@ impl Add for Vector {
 #[cfg(test)]
 mod tests {
     use super::Vector;
+
+    #[test]
+    fn test_dot_and_reflection() {
+        let incoming = Vector::new(1.0, -1.0, 0.0);
+        let normal = Vector::new(0.0, 1.0, 0.0);
+        assert_eq!(incoming.dot(&normal), -1.0);
+        assert_eq!(incoming.reflect(&normal), Vector::new(1.0, 1.0, 0.0));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_zero_vector_cannot_be_normalized() {
+        Vector::new(0.0, 0.0, 0.0).normalize();
+    }
 
     #[test]
     fn test_magnitude() {
