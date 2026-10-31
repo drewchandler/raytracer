@@ -15,8 +15,9 @@ From `/workspace/raytracer`:
 ```
 
 The default scene is a classic ray-tracing composition: large chrome and glass
-spheres, smaller glossy red, blue, and gold spheres, and a reflective checkerboard
-floor beneath a procedural cloudy sky. A low, centered camera emphasizes the reflections. It
+spheres, smaller marble, wood, and stone spheres, and a subtly bumped checkerboard
+floor beneath a procedural cloudy sky. The glass is lightly frosted and reflections
+can be rough; `--scene classic` keeps the smooth colored-sphere composition. A low, centered camera emphasizes the reflections. It
 uses an area light for soft shadows and a directional fill light. The executable
 renders a PNG and exits; no server or graphics window is needed. Save failures produce a message
 and a nonzero exit status.
@@ -37,7 +38,7 @@ and a nonzero exit status.
 ./scripts/cargo.sh run --release --locked -- --help
 ```
 
-The default sky uses seeded fractal noise, a daylight gradient, and shaded cloud
+The default sky uses seeded 3D Perlin gradient noise, a daylight gradient, and shaded cloud
 banks. It is continuous around the entire sky dome, including the reflected
 view. A light distance haze fades the far checkerboard into the horizon without
 softening the foreground. It needs no external image files. To use your own sky texture instead:
@@ -55,7 +56,8 @@ direct illumination; the environment does not add path-traced indirect lighting.
 The original scene keeps its flat background unless `--sky` is supplied.
 
 Defaults are 640×480, 2×2 pixel samples, 3×3 area-light samples, and five
-reflection/refraction bounces. Samples are deterministic, so repeated renders
+reflection/refraction bounces. The gallery uses 4×4 pixel samples for smoother
+rough surfaces. Samples are deterministic, so repeated renders
 with identical settings produce the same pixels. At depth zero, direct lighting
 still works, but no secondary rays are followed. Use an existing output
 directory; the renderer does not create parent directories.
@@ -110,9 +112,9 @@ export RAYTRACER_TOOLING=/tmp/raytracer-tools
 ./scripts/cargo.sh test --locked
 ./scripts/cargo.sh build --release --locked
 python3 scripts/build_site.py \
-  --renderer "$RAYTRACER_TOOLING/build/target/release/raytracer" --output _site
+  --renderer "${RAYTRACER_TOOLING:-/workspace/.raytracer-tools}/build/target/release/raytracer" --output _site --extras
 python3 scripts/test_site.py \
-  --renderer "$RAYTRACER_TOOLING/build/target/release/raytracer"
+  --renderer "${RAYTRACER_TOOLING:-/workspace/.raytracer-tools}/build/target/release/raytracer"
 ```
 
 Open `_site/index.html` locally, or use `python3 -m http.server --directory _site`
@@ -120,7 +122,9 @@ for a local HTTP check. The generator uses Python 3.9+ with no third-party
 packages. Its `--width`, `--height`, `--samples`, `--light-samples`, and `--depth`
 options control the rendered image. `GITHUB_SHA` and `GITHUB_REPOSITORY` supply
 the source link automatically on Actions; local runs show “Local render”.
-The generated site is ignored by Git.
+With `--extras`, the gallery also contains a Utah teapot render, volumetric clouds,
+and an animated PNG. Reduced-motion browser preferences select its still poster.
+The Pages workflow enables these views automatically. The generated site is ignored by Git.
 
 ## Features
 
@@ -149,11 +153,86 @@ The generated site is ignored by Git.
   recursion depth, aperture, and focus distance.
 
 This is a Whitted-style renderer with direct lighting. It does not implement
-path-traced indirect illumination, caustics, volumetrics, image textures on object surfaces,
-mesh loading, or spatial acceleration. Intersection search is linear in object
-count, appropriate for the small procedural scenes here. Glass shadows use
+path-traced indirect illumination, caustics, or image textures on object surfaces.
+Object lookup is linear in the small scene object count; imported triangle meshes
+use a bounding volume hierarchy. The sky volume uses single scattering and
+self-shadowing, rather than a general multiple-scattering volume integrator. Glass shadows use
 straight filtered rays rather than solving refracted light paths; tint is
 applied at each interface rather than using volume absorption.
+
+## Noise materials, bumps, and rough surfaces
+
+`Pattern::Marble(a, b, size)`, `Pattern::Wood(a, b, size)`, and
+`Pattern::Stone(a, b, size)` use the shared seeded 3D gradient-noise module.
+Marble uses turbulent veins; wood uses distorted growth rings; stone combines
+noise at several scales. Colors blend in linear light. Sphere patterns are
+centered on the sphere, and patterns follow shape transforms.
+
+`material.bump = Some(Bump { scale: 8.0, strength: 0.02, seed: 7 })` perturbs the
+shading normal using noise derivatives. The underlying intersections and
+geometric normals stay unchanged. Bump gradients use the inverse transpose under
+nonuniform transforms. Keep strength small for fine surface relief.
+
+`roughness` controls reflected-ray spread, and `transmission_roughness` controls
+frosted glass. Both range from zero (perfect) to one. Sampling is deterministic;
+the first rough bounce averages four lobe samples, and later rough bounces use
+one per camera sample to avoid exponential sample growth. Increase `--samples`
+to 4–8 for smooth rough reflections. This is a bounded Whitted sampling model,
+not a microfacet path tracer.
+
+## Animated and volumetric clouds
+
+```sh
+# A reproducible moment in the moving Perlin sky
+./scripts/cargo.sh run --release --locked -- --time 12 --output clouds-at-12.png
+
+# Ray-marched 3D cloud layer with sunlight scattering and cloud self-shadowing
+./scripts/cargo.sh run --release --locked -- \
+  --scene classic --clouds volume --cloud-steps 32 --samples 2 --time 8
+
+# An animated PNG with a still poster and timing metadata; no Python packages needed
+python3 scripts/render_animation.py \
+  --renderer "${RAYTRACER_TOOLING:-/workspace/.raytracer-tools}/build/target/release/raytracer" \
+  --frames 12 --fps 6 --step 2 --output renders/clouds.png
+```
+
+For the prepared cloud environment, the renderer path is
+`/workspace/.raytracer-tools/build/target/release/raytracer` if
+`RAYTRACER_TOOLING` is unset. Animation advances the same continuous noise field,
+including its reflections and refractions. The APNG repeats its frame sequence;
+the wind trajectory itself is not a seamless periodic loop. `--step` controls
+seconds of simulated cloud motion per frame; `--fps` controls playback speed.
+The exporter checks frame checksums and dimensions, and only replaces its output
+after every render succeeds. It also writes `clouds-still.png` and `clouds.json`.
+
+The volume is a world-space cloud layer between y=20 and y=32, sampled along
+camera and secondary rays with Beer–Lambert extinction and single sunlight
+scattering. Four light-march samples estimate cloud self-shadowing. It also
+attenuates finite surfaces seen through the layer. Clouds do not cast additional
+shadows onto the ground lights. `--cloud-steps` accepts 8–128 (default 24);
+more steps and pixel samples reduce integration aliasing. A grazing-distance
+limit keeps horizon rays bounded. Volume mode cannot be combined with a custom
+panoramic `--sky`. Ordinary procedural clouds remain the faster default.
+
+## OBJ meshes and the Utah teapot
+
+```sh
+./scripts/cargo.sh run --release --locked -- --scene teapot
+./scripts/cargo.sh run --release --locked -- --scene teapot --obj my-model.obj
+```
+
+The importer accepts vertices, normals, triangle/convex-polygon faces,
+`v/vt/vn` and `v//vn` syntax, and negative indices. It reports invalid indices,
+non-finite coordinates, and degenerate faces with line numbers. Polygons are fan
+triangulated; triangulate concave polygons in your modeler before exporting.
+Provided vertex normals are interpolated for smooth shading; otherwise faces
+are flat. UV/material directives are ignored and one scene material is used.
+
+Models are centered, placed on the floor, and uniformly fitted to the scene.
+A median-split BVH prunes ray/triangle tests; smooth shading normals and geometric normals are
+kept separate so ray offsets remain reliable. The bundled 4,032-triangle Utah teapot loads
+without a download. Its MIT-licensed source data, attribution, license, and
+reproduction instructions are in [assets/README.md](assets/README.md).
 
 ## Extend a scene
 
@@ -197,3 +276,15 @@ lighting, area-light penumbrae, shadow distance limits, multiple lights, recursi
 mirrors, glass entry/exit, nested media, Snell's law, Fresnel reflection, total
 internal reflection, antialiasing, and CLI validation. The original scene at
 640×480 with `--samples 1` also matches the pre-extension render pixel for pixel.
+
+Animation and gallery integration tests:
+
+```sh
+python3 scripts/test_site.py --renderer "${RAYTRACER_TOOLING:-/workspace/.raytracer-tools}/build/target/release/raytracer"
+python3 scripts/test_animation.py --renderer "${RAYTRACER_TOOLING:-/workspace/.raytracer-tools}/build/target/release/raytracer"
+```
+
+Additional tests check Perlin continuity and seeding, procedural materials, bump
+normals, rough-ray hemisphere constraints, OBJ parsing/smooth normals, BVH results
+against brute force and triangle-test counts, volume depth/extinction/self-shadowing,
+and APNG timing, checksums, frame differences, and gallery assets.

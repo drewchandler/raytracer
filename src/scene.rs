@@ -39,8 +39,12 @@ impl Scene {
     }
 
     pub fn background_at(&self, direction: &Vector) -> LinearColor {
+        self.background_ray(&Ray::new(::point::Point::new(0.0,0.0,0.0),*direction))
+    }
+
+    pub fn background_ray(&self,ray: &Ray) -> LinearColor {
         match self.environment {
-            Some(ref environment) => environment.sample(direction),
+            Some(ref environment) => environment.sample_ray(ray),
             None => self.background.linear()
         }
     }
@@ -54,6 +58,14 @@ impl Scene {
                 color * (1.0 - amount) + self.background_at(direction) * amount
             },
             None => color
+        }
+    }
+
+    pub fn surface_color(&self,color: LinearColor,distance: f64,ray: &Ray) -> LinearColor {
+        let color=self.apply_haze(color,distance,&ray.direction);
+        match self.environment {
+            Some(ref environment)=>environment.transmit_surface(ray,distance,color),
+            None=>color
         }
     }
 
@@ -115,7 +127,7 @@ impl Scene {
             seen.push(hit.object_index);
             let transmission = hit.object.material.transparency;
             if transmission == 0.0 { return LinearColor::black(); }
-            visibility = visibility * hit.object.color_at(&ray.at(hit.distance)).linear() * transmission;
+            visibility = visibility * hit.object.albedo_at(&ray.at(hit.distance)) * transmission;
         }
         visibility
     }

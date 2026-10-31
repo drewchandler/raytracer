@@ -1,5 +1,8 @@
 use super::color::Color;
 use super::point::Point;
+use super::color::LinearColor;
+use super::noise::Perlin;
+use super::vector::Vector;
 
 /// Procedural textures are evaluated in the shape's local coordinate system.
 #[derive(Clone, Copy, Debug)]
@@ -8,22 +11,48 @@ pub enum Pattern {
     Checkers(Color, Color, f64),
     /// Alternating cubes, useful for solid objects rather than a plane boundary.
     Checkers3D(Color, Color, f64),
-    Stripes(Color, Color, f64)
+    Stripes(Color, Color, f64),
+    Marble(Color, Color, f64),
+    Wood(Color, Color, f64),
+    Stone(Color, Color, f64)
 }
 
 impl Pattern {
     pub fn color_at(&self, point: &Point) -> Color {
+        self.linear_at(point).to_color()
+    }
+
+    pub fn linear_at(&self, point: &Point) -> LinearColor {
+        let procedural = match *self {
+            Pattern::Marble(a,b,s) | Pattern::Wood(a,b,s) | Pattern::Stone(a,b,s) => Some((a,b,s)),
+            _ => None
+        };
+        if let Some((a,b,size)) = procedural {
+            assert!(size>0.0 && size.is_finite());
+            let p=Vector::new(point.x,point.y,point.z).scale(1.0/size);
+            let n=Perlin::new(17);
+            let t=match *self {
+                Pattern::Marble(_,_,_) => (0.5+0.5*(p.dx*3.0+p.dy+7.0*n.turbulence(p,5)).sin()).powf(7.0),
+                Pattern::Wood(_,_,_) => 0.5+0.5*((p.dx*p.dx+p.dz*p.dz).sqrt()*12.0+5.0*n.turbulence(p,4)).sin(),
+                _ => (0.5+0.9*n.fbm(p.scale(3.0),5)).max(0.0).min(1.0)
+            };
+            return a.linear()*(1.0-t)+b.linear()*t;
+        }
         let (a, b, size, parity) = match *self {
             Pattern::Checkers(a, b, size) => (a, b, size, (point.x / size).floor() + (point.z / size).floor()),
             Pattern::Checkers3D(a, b, size) => {
                 (a, b, size, (point.x / size).floor() + (point.y / size).floor() + (point.z / size).floor())
             },
-            Pattern::Stripes(a, b, size) => (a, b, size, (point.x / size).floor())
+            Pattern::Stripes(a, b, size) => (a, b, size, (point.x / size).floor()),
+            _ => unreachable!()
         };
         assert!(size > 0.0 && size.is_finite(), "Pattern size must be positive and finite");
-        if parity % 2.0 == 0.0 { a } else { b }
+        if parity % 2.0 == 0.0 { a.linear() } else { b.linear() }
     }
 }
+
+#[derive(Clone, Copy, Debug)]
+pub struct Bump { pub scale: f64, pub strength: f64, pub seed: u32 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct Material {
@@ -36,7 +65,10 @@ pub struct Material {
     /// Fraction transmitted through the remaining surface, in [0, 1].
     pub transparency: f64,
     pub refractive_index: f64,
-    pub pattern: Option<Pattern>
+    pub pattern: Option<Pattern>,
+    pub bump: Option<Bump>,
+    pub roughness: f64,
+    pub transmission_roughness: f64
 }
 
 impl Default for Material {
@@ -49,7 +81,7 @@ impl Default for Material {
             reflective: 0.0,
             transparency: 0.0,
             refractive_index: 1.0,
-            pattern: None
+            pattern: None, bump: None, roughness: 0.0, transmission_roughness: 0.0
         }
     }
 }
@@ -69,12 +101,13 @@ impl Material {
     }
 
     pub fn validate(&self) {
-        for coefficient in &[self.ambient, self.diffuse, self.specular, self.reflective, self.transparency] {
+        for coefficient in &[self.ambient, self.diffuse, self.specular, self.reflective, self.transparency, self.roughness, self.transmission_roughness] {
             assert!(coefficient.is_finite() && *coefficient >= 0.0 && *coefficient <= 1.0,
                     "Material coefficients must be between zero and one");
         }
         assert!(self.shininess.is_finite() && self.shininess >= 1.0);
         assert!(self.refractive_index.is_finite() && self.refractive_index > 0.0);
+        if let Some(bump)=self.bump { assert!(bump.scale>0.0 && bump.scale.is_finite() && bump.strength>=0.0 && bump.strength.is_finite()); }
         if let Some(pattern) = self.pattern {
             pattern.color_at(&Point::new(0.0, 0.0, 0.0));
         }
@@ -109,5 +142,16 @@ mod tests {
     #[should_panic]
     fn rejects_invalid_refractive_index() {
         Material::glass(0.0).validate();
+    }
+
+    #[test]
+    fn noise_materials_vary_in_three_dimensions_and_stay_in_color_range() {
+        let a=Color::new(30,50,80);let b=Color::new(230,200,170);
+        for pattern in &[Pattern::Marble(a,b,0.5),Pattern::Wood(a,b,0.5),Pattern::Stone(a,b,0.5)] {
+            let p=Point::new(0.2,0.3,0.4);let q=Point::new(1.31,-0.7,0.89);
+            let x=pattern.linear_at(&p);let y=pattern.linear_at(&q);
+            assert_eq!(x,pattern.linear_at(&p));assert!(x!=y);
+            assert!(x.r>=a.linear().r && x.r<=b.linear().r);
+        }
     }
 }

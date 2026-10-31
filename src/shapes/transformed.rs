@@ -31,6 +31,21 @@ impl Shape for Transformed {
     fn local_point(&self, point: &Point) -> Point {
         self.shape.local_point(&self.transform.inverse_point(point))
     }
+
+    fn normal_for_ray(&self, ray: &Ray, distance: f64) -> Vector {
+        let local=Ray::new(self.transform.inverse_point(&ray.origin),self.transform.inverse_vector(&ray.direction));
+        self.transform.normal(&self.shape.normal_for_ray(&local,distance))
+    }
+
+    fn normal_to_world(&self, normal: &Vector) -> Vector {
+        self.transform.normal_vector(&self.shape.normal_to_world(normal))
+    }
+
+    fn normals_for_ray(&self,ray: &Ray,distance: f64) -> (Vector,Vector) {
+        let local=Ray::new(self.transform.inverse_point(&ray.origin),self.transform.inverse_vector(&ray.direction));
+        let (geometric,shading)=self.shape.normals_for_ray(&local,distance);
+        (self.transform.normal(&geometric),self.transform.normal(&shading))
+    }
 }
 
 #[cfg(test)]

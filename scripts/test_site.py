@@ -87,6 +87,23 @@ class GalleryTests(unittest.TestCase):
             self.assertNotIn("onload", text)
             self.assertIn("Local render", text)
 
+    def test_extra_gallery_renders_mesh_volume_and_real_animation(self):
+        from render_animation import chunks
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)
+            generate(self.renderer,output,32,24,1,1,2,extras=True)
+            page=Page((output/'index.html').read_text())
+            self.assertEqual(len(page.images),4)
+            for image in page.images:
+                self.assertTrue((output/image['src']).is_file())
+            for name in ('teapot.png','volumetric.png','clouds.png','clouds-still.png'):
+                self.assertTrue((output/name).exists())
+            animation=list(chunks((output/'clouds.png').read_bytes()))
+            self.assertEqual(sum(k==b'fcTL' for k,_ in animation),8)
+            metadata=json.loads((output/'render.json').read_text())
+            self.assertEqual(len(metadata['additional_renders']),3)
+            self.assertIn('prefers-reduced-motion',(output/'index.html').read_text())
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)

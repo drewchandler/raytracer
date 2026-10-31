@@ -3,6 +3,10 @@ use std::path::Path;
 use image::{self, ImageResult, RgbImage};
 use super::color::{Color, LinearColor};
 use super::vector::Vector;
+use super::noise::Perlin;
+use super::volume::CloudVolume;
+use super::ray::Ray;
+use super::point::Point;
 
 fn mix(a: LinearColor, b: LinearColor, t: f64) -> LinearColor {
     a * (1.0 - t) + b * t
@@ -49,49 +53,17 @@ impl ImageTexture {
 }
 
 /// A deterministic, continuous cloud texture over the sky dome.
-/// Fractal value noise provides broad cloud banks and smaller billowing edges.
+/// Fractal Perlin noise provides broad cloud banks and smaller billowing edges.
 pub struct CloudSky {
-    seed: u32
+    seed: u32,
+    time: f64
 }
 
 impl CloudSky {
-    pub fn new(seed: u32) -> CloudSky { CloudSky { seed: seed } }
+    pub fn new(seed: u32) -> CloudSky { CloudSky { seed: seed, time: 0.0 } }
 
-    fn lattice(&self, x: i32, y: i32, z: i32, octave: u32) -> f64 {
-        let mut h = self.seed.wrapping_add(octave.wrapping_mul(1013));
-        h ^= (x as u32).wrapping_mul(374761393);
-        h ^= (y as u32).wrapping_mul(668265263);
-        h ^= (z as u32).wrapping_mul(2246822519);
-        h = (h ^ (h >> 13)).wrapping_mul(1274126177);
-        (h ^ (h >> 16)) as f64 / 4294967295.0
-    }
-
-    fn noise(&self, point: Vector, octave: u32) -> f64 {
-        let x = point.dx.floor() as i32;
-        let y = point.dy.floor() as i32;
-        let z = point.dz.floor() as i32;
-        let u = smoothstep(0.0, 1.0, point.dx - x as f64);
-        let v = smoothstep(0.0, 1.0, point.dy - y as f64);
-        let w = smoothstep(0.0, 1.0, point.dz - z as f64);
-        let lerp = |a: f64, b: f64, t: f64| a * (1.0 - t) + b * t;
-        let a = lerp(self.lattice(x, y, z, octave), self.lattice(x + 1, y, z, octave), u);
-        let b = lerp(self.lattice(x, y + 1, z, octave), self.lattice(x + 1, y + 1, z, octave), u);
-        let c = lerp(self.lattice(x, y, z + 1, octave), self.lattice(x + 1, y, z + 1, octave), u);
-        let d = lerp(self.lattice(x, y + 1, z + 1, octave), self.lattice(x + 1, y + 1, z + 1, octave), u);
-        lerp(lerp(a, b, v), lerp(c, d, v), w)
-    }
-
-    fn fractal(&self, mut point: Vector, octaves: u32) -> f64 {
-        let mut sum = 0.0;
-        let mut weight = 0.5;
-        let mut total = 0.0;
-        for octave in 0..octaves {
-            sum += self.noise(point, octave) * weight;
-            total += weight;
-            point = point.scale(2.03);
-            weight *= 0.5;
-        }
-        sum / total
+    fn fractal(&self, point: Vector, octaves: u32) -> f64 {
+        0.5+0.5*Perlin::new(self.seed).fbm(point,octaves)
     }
 
     fn sample(&self, direction: &Vector) -> LinearColor {
@@ -101,7 +73,7 @@ impl CloudSky {
         let clear = mix(horizon, zenith, height.powf(0.42));
         if direction.dy <= 0.0 { return horizon; }
         // Sampling in 3D keeps the sky continuous across the longitude seam and poles.
-        let point = Vector::new(direction.dx * 4.0 + 7.1, direction.dy * 8.0 + 2.3, direction.dz * 4.0 - 3.7);
+        let point = Vector::new(direction.dx * 4.0 + 7.1+self.time*0.08, direction.dy * 8.0 + 2.3, direction.dz * 4.0 - 3.7+self.time*0.025);
         let density = self.fractal(point, 5);
         let sun = Vector::new(-0.45, 0.55, -0.7).normalize();
         let light_density = self.fractal(point + sun.scale(0.22), 3);
@@ -115,7 +87,8 @@ impl CloudSky {
 
 enum SkyTexture {
     Clouds(CloudSky),
-    Panorama(ImageTexture)
+    Panorama(ImageTexture),
+    Volume(CloudVolume)
 }
 
 /// An infinitely distant environment, visible on misses of any recursive ray.
@@ -142,17 +115,52 @@ impl Environment {
         self.rotation = (degrees % 360.0) * PI / 180.0;
     }
 
+    pub fn volumetric(seed: u32,steps: u32) -> Environment {
+        Environment {texture: SkyTexture::Volume(CloudVolume::new(seed,steps)),rotation:0.0}
+    }
+
+    pub fn set_time(&mut self,time: f64) {
+        assert!(time.is_finite() && time.abs()<=1000000.0);
+        match self.texture {
+            SkyTexture::Clouds(ref mut sky)=>sky.time=time,
+            SkyTexture::Volume(ref mut volume)=>volume.time=time,
+            _=>{}
+        }
+    }
+
     pub fn sample(&self, direction: &Vector) -> LinearColor {
-        let direction = direction.normalize();
+        self.sample_ray(&Ray::new(Point::new(0.0,0.0,0.0),*direction))
+    }
+
+    pub fn sample_ray(&self,ray: &Ray) -> LinearColor {
+        let direction = ray.direction.normalize();
         let (s, c) = self.rotation.sin_cos();
         let direction = Vector::new(c * direction.dx + s * direction.dz, direction.dy, -s * direction.dx + c * direction.dz);
         match self.texture {
             SkyTexture::Clouds(ref sky) => sky.sample(&direction),
+            SkyTexture::Volume(ref volume) => {
+                let origin=Point::new(c*ray.origin.x+s*ray.origin.z,ray.origin.y,-s*ray.origin.x+c*ray.origin.z);
+                let t=direction.dy.max(0.0).powf(0.42);
+                let clear=mix(Color::new(191,218,241).linear(),Color::new(30,88,173).linear(),t);
+                volume.sample(&Ray::new(origin,direction),clear)
+            },
             SkyTexture::Panorama(ref image) => {
                 let u = 0.5 + direction.dz.atan2(direction.dx) / (2.0 * PI);
                 let v = direction.dy.max(-1.0).min(1.0).acos() / PI;
                 image.sample(u, v)
             }
+        }
+    }
+
+    pub fn transmit_surface(&self,ray: &Ray,distance: f64,color: LinearColor) -> LinearColor {
+        match self.texture {
+            SkyTexture::Volume(ref volume)=> {
+                let (s,c)=self.rotation.sin_cos();
+                let p=ray.origin;let d=ray.direction.normalize();
+                let local=Ray::new(Point::new(c*p.x+s*p.z,p.y,-s*p.x+c*p.z),Vector::new(c*d.dx+s*d.dz,d.dy,-s*d.dx+c*d.dz));
+                volume.sample_until(&local,color,distance)
+            },
+            _=>color
         }
     }
 }

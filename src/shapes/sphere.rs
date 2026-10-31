@@ -29,6 +29,10 @@ impl Shape for Sphere {
     fn normal_at(&self, point: &Point) -> Vector {
         (*point - self.center).normalize()
     }
+
+    fn local_point(&self,point: &Point) -> Point {
+        let v=*point-self.center;Point::new(v.dx,v.dy,v.dz)
+    }
 }
 
 #[cfg(test)]

@@ -95,12 +95,16 @@ impl Transform {
 
     /// Normals use the inverse transpose, including under nonuniform scaling.
     pub fn normal(&self, normal: &Vector) -> Vector {
+        self.normal_vector(normal).normalize()
+    }
+
+    pub fn normal_vector(&self, normal: &Vector) -> Vector {
         let m = &self.inverse;
         Vector::new(
             m[0][0] * normal.dx + m[1][0] * normal.dy + m[2][0] * normal.dz,
             m[0][1] * normal.dx + m[1][1] * normal.dy + m[2][1] * normal.dz,
             m[0][2] * normal.dx + m[1][2] * normal.dy + m[2][2] * normal.dz
-        ).normalize()
+        )
     }
 }
 

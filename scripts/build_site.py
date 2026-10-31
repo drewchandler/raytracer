@@ -10,6 +10,7 @@ import re
 import struct
 import subprocess
 import time
+from render_animation import render as render_animation
 
 
 def bounded_int(low, high):
@@ -21,8 +22,8 @@ def bounded_int(low, high):
     return parse
 
 
-def generate(renderer, output, width=800, height=600, samples=3, light_samples=4,
-             depth=6, commit="", repository=""):
+def generate(renderer, output, width=800, height=600, samples=4, light_samples=4,
+             depth=6, commit="", repository="", extras=False):
     renderer = Path(renderer).resolve(strict=True)
     output = Path(output).resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -44,6 +45,33 @@ def generate(renderer, output, width=800, height=600, samples=3, light_samples=4
         raise ValueError("renderer did not produce a PNG with the requested dimensions")
     pending.replace(output / "scene.png")
 
+    additional = []
+    if extras:
+        def dimensions(max_width, max_height):
+            scale = min(1.0, max_width / width, max_height / height)
+            return max(1, round(width * scale)), max(1, round(height * scale))
+        for filename, scene, clouds, limits, title, description in [
+            ("teapot.png", "teapot", "procedural", (480, 360), "Utah teapot", "A smooth copper teapot, imported as a triangle mesh."),
+            ("volumetric.png", "classic", "volume", (320, 240), "Volumetric clouds", "Sunlight scatters through a cloud layer with depth and self-shadowing.")]:
+            w, h = dimensions(*limits)
+            pending_extra = output / (filename + ".pending.png")
+            pending_extra.unlink(missing_ok=True)
+            subprocess.run([str(renderer), "--scene", scene, "--clouds", clouds,
+                "--cloud-steps", "32", "--width", str(w), "--height", str(h),
+                "--samples", "2", "--light-samples", "2",
+                "--depth", "4", "--output", str(pending_extra)], check=True)
+            with pending_extra.open("rb") as image:
+                extra_header = image.read(24)
+            if extra_header[:8] != b"\x89PNG\r\n\x1a\n" or struct.unpack(">II", extra_header[16:24]) != (w, h):
+                raise ValueError("invalid gallery render: " + filename)
+            pending_extra.replace(output / filename)
+            additional.append(dict(image=filename, width=w, height=h, title=title, description=description))
+        w, h = dimensions(240, 180)
+        animation = render_animation(renderer, output / "clouds.png", frames=8, fps=6,
+            width=w, height=h, samples=1, step=3.0, depth=3, light_samples=1)
+        additional.append(dict(image="clouds.png", width=w, height=h, title="Clouds in motion",
+            description="A time-lapse sky, reflected and refracted in the spheres.", animation=animation))
+
     # Only generate source links for valid GitHub identities and full commit hashes.
     linked = (re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository) and
               re.fullmatch(r"[0-9a-fA-F]{40}", commit))
@@ -57,8 +85,17 @@ def generate(renderer, output, width=800, height=600, samples=3, light_samples=4
     metadata = dict(commit=commit, repository=repository, generated_at=timestamp,
                     width=width, height=height, samples_per_axis=samples,
                     light_samples_per_axis=light_samples, max_depth=depth,
-                    render_seconds=round(elapsed, 3))
+                    render_seconds=round(elapsed, 3), additional_renders=additional)
     (output / "render.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    extra_html = ""
+    if additional:
+        cards = []
+        for item in additional:
+            image = '<img src="{image}" width="{width}" height="{height}" loading="lazy" alt="{description}">'.format(**item)
+            if "animation" in item:
+                image = '<picture><source media="(prefers-reduced-motion: reduce)" srcset="clouds-still.png">' + image + '</picture>'
+            cards.append('<figure><a href="{image}">{picture}</a><figcaption><strong>{title}</strong><br>{description}</figcaption></figure>'.format(picture=image, **item))
+        extra_html = '<section aria-label="More rendered scenes" class="additional">' + ''.join(cards) + '</section>'
     page = """<!doctype html>
 <html lang="en">
 <head>
@@ -77,6 +114,9 @@ def generate(renderer, output, width=800, height=600, samples=3, light_samples=4
     figure { margin: 32px 0 0; border: 1px solid #364553; border-radius: 16px; overflow: hidden; background: #1c2732; }
     img { display: block; width: 100%; height: auto; }
     figcaption { padding: 16px 20px; line-height: 1.6; color: #c3ceda; }
+    .additional { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 28px; }
+    .additional figure { margin: 0; }
+    @media (max-width: 600px) { .additional { grid-template-columns: 1fr; } }
     dl { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 24px 0; }
     dl div { border: 1px solid #364553; border-radius: 10px; padding: 18px; }
     dt { font-size: .8rem; color: #b8c6d5; }
@@ -93,15 +133,15 @@ def generate(renderer, output, width=800, height=600, samples=3, light_samples=4
     <header>
       <div class="eyebrow">Built from source · rendered on the CPU</div>
       <h1>Raytracer</h1>
-      <p class="intro">The classic ray-tracing scene: chrome and glass spheres beneath a cloudy sky.
+      <p class="intro">Procedural materials, frosted glass, and clouds in motion.
       This image is generated by the Rust renderer, then published with the code that produced it.</p>
     </header>
     <figure>
       <a href="scene.png" aria-label="Open the rendered scene at full resolution">
-        <img src="scene.png" width="WIDTH" height="HEIGHT" alt="A cloudy blue sky reflected in chrome and glass spheres, with smaller red, blue, and gold spheres on a checkerboard floor.">
+        <img src="scene.png" width="WIDTH" height="HEIGHT" alt="Marble, wood, and stone spheres alongside chrome and frosted glass on a checkerboard beneath a cloudy sky.">
       </a>
-      <figcaption>Billowing clouds reflected in chrome and refracted through glass,
-      above a checkerboard horizon with soft shadows.</figcaption>
+      <figcaption>Marble, wood, and stone alongside chrome and frosted glass,
+      under a cloudy sky with soft shadows and a gently textured checkerboard.</figcaption>
     </figure>
     <dl>
       <div><dt>Resolution</dt><dd>WIDTH × HEIGHT</dd></div>
@@ -109,6 +149,7 @@ def generate(renderer, output, width=800, height=600, samples=3, light_samples=4
       <div><dt>Area-light samples</dt><dd>LIGHT_SAMPLES</dd></div>
       <div><dt>Ray bounces</dt><dd>DEPTH</dd></div>
     </dl>
+    EXTRAS
     <footer>
       SOURCE
       <a href="scene.png" download>Download PNG</a>
@@ -121,7 +162,7 @@ def generate(renderer, output, width=800, height=600, samples=3, light_samples=4
 """
     for key, value in dict(WIDTH=width, HEIGHT=height, PIXEL_SAMPLES=samples * samples,
                            LIGHT_SAMPLES=light_samples * light_samples, DEPTH=depth,
-                           TIMESTAMP=timestamp, SOURCE=source).items():
+                           TIMESTAMP=timestamp, EXTRAS=extra_html, SOURCE=source).items():
         page = page.replace(key, str(value))
     (output / "index.html").write_text(page, encoding="utf-8")
     (output / ".nojekyll").write_text("", encoding="utf-8")
@@ -134,13 +175,14 @@ def main():
     parser.add_argument("--output", default="_site", type=Path)
     parser.add_argument("--width", type=bounded_int(1, 8192), default=800)
     parser.add_argument("--height", type=bounded_int(1, 8192), default=600)
-    parser.add_argument("--samples", type=bounded_int(1, 16), default=3)
+    parser.add_argument("--samples", type=bounded_int(1, 16), default=4)
     parser.add_argument("--light-samples", type=bounded_int(1, 64), default=4)
     parser.add_argument("--depth", type=bounded_int(0, 16), default=6)
+    parser.add_argument("--extras", action="store_true", help="also render the teapot, volumetric clouds, and an animated PNG")
     args = parser.parse_args()
     generate(args.renderer, args.output, args.width, args.height, args.samples,
              args.light_samples, args.depth, os.environ.get("GITHUB_SHA", ""),
-             os.environ.get("GITHUB_REPOSITORY", ""))
+             os.environ.get("GITHUB_REPOSITORY", ""), args.extras)
     print("Gallery written to {}".format(args.output))
 
 
