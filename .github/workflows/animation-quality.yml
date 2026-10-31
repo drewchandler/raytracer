@@ -1,0 +1,177 @@
+name: High-quality cloud animation
+
+on:
+  workflow_run:
+    workflows: [Render and publish gallery]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      frames:
+        description: Frames at 24 FPS (48 is a two-second seamless loop)
+        type: choice
+        default: '48'
+        options: ['48', '96']
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: quality-animation-${{ github.event.workflow_run.head_branch || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  RAYTRACER_TOOLING: ${{ github.workspace }}/../raytracer-tools
+
+jobs:
+  context:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'master' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    outputs:
+      sha: ${{ steps.context.outputs.sha }}
+      gallery_run: ${{ steps.context.outputs.gallery_run }}
+      publish: ${{ steps.context.outputs.publish }}
+    steps:
+      - id: context
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const sha = run ? run.head_sha : context.sha;
+            const branch = run ? run.head_branch : context.ref.replace(/^refs\/heads\//, '');
+            let galleryRun = run ? run.id : '';
+            if (!run && branch === 'master') {
+              const {data} = await github.rest.actions.listWorkflowRuns({
+                ...context.repo, workflow_id: 'pages.yml', head_sha: sha,
+                status: 'success', per_page: 20
+              });
+              galleryRun = data.workflow_runs.find(r => r.head_branch === 'master' &&
+                r.event !== 'pull_request' && r.head_repository.full_name === context.payload.repository.full_name)?.id || '';
+            }
+            core.setOutput('sha', sha);
+            core.setOutput('gallery_run', String(galleryRun));
+            core.setOutput('publish', String(branch === 'master' && Boolean(galleryRun)));
+
+  render:
+    needs: context
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      FRAME_CACHE: ${{ github.workspace }}/../raytracer-animation-frames
+      ANIMATION_FRAMES: ${{ inputs.frames || '48' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.context.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.RAYTRACER_TOOLING }}
+          key: raytracer-legacy-v1-${{ runner.os }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', 'scripts/prepare.sh') }}
+      - name: Prepare and build the renderer
+        run: |
+          ./scripts/prepare.sh
+          ./scripts/cargo.sh build --release --locked -j 2
+      - id: frames
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.FRAME_CACHE }}
+          key: animation-v1-${{ runner.os }}-${{ needs.context.outputs.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: animation-v1-${{ runner.os }}-${{ needs.context.outputs.sha }}-
+      - name: Render the quality preset
+        id: render
+        env:
+          SOURCE_COMMIT: ${{ needs.context.outputs.sha }}
+        run: >-
+          python3 scripts/render_animation.py
+          --renderer "$RAYTRACER_TOOLING/build/target/release/raytracer"
+          --preset quality --frames "$ANIMATION_FRAMES" --jobs 2
+          --source-commit "$SOURCE_COMMIT"
+          --cache-dir "$FRAME_CACHE" --output _quality/clouds.png
+      - name: Save completed frames for retries
+        if: always() && steps.render.outcome != 'skipped'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.FRAME_CACHE }}
+          key: ${{ steps.frames.outputs.cache-primary-key }}
+      - name: Validate quality, timing, and source provenance
+        env:
+          EXPECTED_COMMIT: ${{ needs.context.outputs.sha }}
+        run: >-
+          python3 scripts/attach_animation.py --check-only
+          --animation _quality/clouds.png --require-quality
+          --expected-commit "$EXPECTED_COMMIT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raytracer-quality-animation
+          path: _quality/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  publish:
+    if: needs.context.outputs.publish == 'true'
+    needs: [context, render]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: pages-publication
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.context.outputs.sha }}
+          persist-credentials: false
+      - name: Download the matching quick gallery
+        uses: actions/download-artifact@v4
+        with:
+          name: raytracer-gallery
+          path: _site
+          run-id: ${{ needs.context.outputs.gallery_run }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: raytracer-quality-animation
+          path: _quality
+      - name: Attach the validated animation without rerendering the stills
+        env:
+          EXPECTED_COMMIT: ${{ needs.context.outputs.sha }}
+        run: >-
+          python3 scripts/attach_animation.py --site _site
+          --animation _quality/clouds.png --require-quality
+          --expected-commit "$EXPECTED_COMMIT"
+      - name: Skip publication if master has moved on
+        id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_COMMIT: ${{ needs.context.outputs.sha }}
+        run: |
+          current_master=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/master" --jq '.object.sha')
+          if [ "$current_master" = "$EXPECTED_COMMIT" ]; then
+            echo 'publish=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'publish=false' >> "$GITHUB_OUTPUT"
+            echo 'A newer master commit exists; keeping its gallery.'
+          fi
+      - if: steps.current.outputs.publish == 'true'
+        uses: actions/configure-pages@v5
+      - if: steps.current.outputs.publish == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site/
+      - if: steps.current.outputs.publish == 'true'
+        id: deployment
+        uses: actions/deploy-pages@v4

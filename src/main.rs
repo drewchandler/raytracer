@@ -17,6 +17,7 @@ mod transform;
 mod texture;
 mod noise;
 mod volume;
+mod motion;
 
 use std::{env, io, process};
 use std::io::Write;
@@ -50,6 +51,7 @@ fn run() -> Result<(), String> {
     if let Some(ref mut environment) = raytracer.scene.environment {
         environment.set_rotation(options.sky_rotation);
         environment.set_time(options.time);
+        environment.set_loop(options.cloud_loop);
     }
     raytracer.camera = raytracer.camera.with_lens(options.aperture, options.focus);
     let start = Instant::now();

@@ -56,11 +56,12 @@ impl ImageTexture {
 /// Fractal Perlin noise provides broad cloud banks and smaller billowing edges.
 pub struct CloudSky {
     seed: u32,
-    time: f64
+    time: f64,
+    loop_period: f64
 }
 
 impl CloudSky {
-    pub fn new(seed: u32) -> CloudSky { CloudSky { seed: seed, time: 0.0 } }
+    pub fn new(seed: u32) -> CloudSky { CloudSky { seed: seed, time: 0.0, loop_period: 0.0 } }
 
     fn fractal(&self, point: Vector, octaves: u32) -> f64 {
         0.5+0.5*Perlin::new(self.seed).fbm(point,octaves)
@@ -73,7 +74,8 @@ impl CloudSky {
         let clear = mix(horizon, zenith, height.powf(0.42));
         if direction.dy <= 0.0 { return horizon; }
         // Sampling in 3D keeps the sky continuous across the longitude seam and poles.
-        let point = Vector::new(direction.dx * 4.0 + 7.1+self.time*0.08, direction.dy * 8.0 + 2.3, direction.dz * 4.0 - 3.7+self.time*0.025);
+        let offset=::motion::cloud_offset(self.time,self.loop_period,Vector::new(0.08,0.0,0.025));
+        let point = Vector::new(direction.dx * 4.0 + 7.1, direction.dy * 8.0 + 2.3, direction.dz * 4.0 - 3.7)+offset;
         let density = self.fractal(point, 5);
         let sun = Vector::new(-0.45, 0.55, -0.7).normalize();
         let light_density = self.fractal(point + sun.scale(0.22), 3);
@@ -124,6 +126,15 @@ impl Environment {
         match self.texture {
             SkyTexture::Clouds(ref mut sky)=>sky.time=time,
             SkyTexture::Volume(ref mut volume)=>volume.time=time,
+            _=>{}
+        }
+    }
+
+    pub fn set_loop(&mut self,period: f64) {
+        assert!(period.is_finite() && period>=0.0);
+        match self.texture {
+            SkyTexture::Clouds(ref mut sky)=>sky.loop_period=period,
+            SkyTexture::Volume(ref mut volume)=>volume.loop_period=period,
             _=>{}
         }
     }

@@ -10,7 +10,7 @@ import re
 import struct
 import subprocess
 import time
-from render_animation import render as render_animation
+from render_animation import render_profile, is_quality
 
 
 def bounded_int(low, high):
@@ -66,12 +66,27 @@ def generate(renderer, output, width=800, height=600, samples=4, light_samples=4
                 raise ValueError("invalid gallery render: " + filename)
             pending_extra.replace(output / filename)
             additional.append(dict(image=filename, width=w, height=h, title=title, description=description))
-        w, h = dimensions(240, 180)
-        animation = render_animation(renderer, output / "clouds.png", frames=8, fps=6,
-            width=w, height=h, samples=1, step=3.0, depth=3, light_samples=1)
+        w, h = dimensions(320, 240)
+        animation = render_profile(renderer, output / "clouds.png", 'preview', width=w, height=h,
+                                   jobs=2, source_commit=commit)
         additional.append(dict(image="clouds.png", width=w, height=h, title="Clouds in motion",
-            description="A time-lapse sky, reflected and refracted in the spheres.", animation=animation))
+            description="A seamless sky loop, reflected and refracted in the spheres.", animation=animation))
 
+    metadata = dict(commit=commit, repository=repository, generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    width=width, height=height, samples_per_axis=samples,
+                    light_samples_per_axis=light_samples, max_depth=depth,
+                    render_seconds=round(elapsed, 3), additional_renders=additional)
+    write_page(output, metadata)
+    return metadata
+
+
+def write_page(output, metadata):
+    """Write the gallery from verified renders; used again when the quality job finishes."""
+    output = Path(output)
+    commit, repository = metadata.get('commit', ''), metadata.get('repository', '')
+    width, height = metadata['width'], metadata['height']
+    samples, light_samples, depth = (metadata[k] for k in ('samples_per_axis', 'light_samples_per_axis', 'max_depth'))
+    additional = metadata.get('additional_renders', [])
     # Only generate source links for valid GitHub identities and full commit hashes.
     linked = (re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository) and
               re.fullmatch(r"[0-9a-fA-F]{40}", commit))
@@ -81,21 +96,67 @@ def generate(renderer, output, width=800, height=600, samples=4, light_samples=4
             html.escape(commit_url, quote=True), html.escape(commit[:7]))
     else:
         source = "Local render"
-    timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    metadata = dict(commit=commit, repository=repository, generated_at=timestamp,
-                    width=width, height=height, samples_per_axis=samples,
-                    light_samples_per_axis=light_samples, max_depth=depth,
-                    render_seconds=round(elapsed, 3), additional_renders=additional)
+    timestamp = metadata["generated_at"]
     (output / "render.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     extra_html = ""
     if additional:
         cards = []
         for item in additional:
-            image = '<img src="{image}" width="{width}" height="{height}" loading="lazy" alt="{description}">'.format(**item)
-            if "animation" in item:
-                image = '<picture><source media="(prefers-reduced-motion: reduce)" srcset="clouds-still.png">' + image + '</picture>'
-            cards.append('<figure><a href="{image}">{picture}</a><figcaption><strong>{title}</strong><br>{description}</figcaption></figure>'.format(picture=image, **item))
+            if not re.fullmatch(r'[A-Za-z0-9_.-]+\.png', item['image']):
+                raise ValueError('invalid gallery image filename')
+            values = dict(item)
+            for key in ('image', 'title', 'description'):
+                values[key] = html.escape(str(values[key]), quote=True)
+            values['width'], values['height'] = int(item['width']), int(item['height'])
+            image = '<img src="{image}" width="{width}" height="{height}" loading="lazy" alt="{description}">'.format(**values)
+            control, specs, css = '', '', ''
+            if 'animation' in item:
+                poster = item['image'][:-4] + '-still.png'
+                image = image.replace('src="' + values['image'] + '"', 'src="' + poster + '"')
+                image = '<picture class="animation-picture"><source media="(prefers-reduced-motion: reduce)" srcset="' + poster + '">' + image + '</picture>'
+                animation = item['animation']
+                label = 'High quality' if is_quality(animation) else 'Quick preview'
+                specs = '<small class="animation-specs">{} · {} × {} · {} FPS · {} samples/pixel</small>'.format(
+                    label, int(animation['width']), int(animation['height']), int(animation['fps']),
+                    int(animation.get('samples_per_axis', 1)) ** 2)
+                control = '<button type="button" class="animation-control" data-animation="{}" data-poster="{}" aria-pressed="false">Play animation</button><span class="animation-status" role="status"></span>'.format(values['image'], poster)
+                if not is_quality(animation) and linked:
+                    control += '<a class="quality-link" href="https://github.com/{}/actions/workflows/animation-quality.yml">Full-quality render workflow</a>'.format(repository)
+                css = ' class="animation-card"'
+            cards.append('<figure{css}><a href="{image}">{picture}</a><figcaption><strong>{title}</strong><br>{description}{specs}{control}</figcaption></figure>'.format(
+                css=css, picture=image, specs=specs, control=control, **values))
         extra_html = '<section aria-label="More rendered scenes" class="additional">' + ''.join(cards) + '</section>'
+        extra_html += """<script>
+document.querySelectorAll('.animation-control').forEach(button => {
+  const card = button.closest('figure');
+  const image = card.querySelector('img');
+  const source = card.querySelector('source');
+  const status = card.querySelector('.animation-status');
+  const show = (file, playing) => {
+    source.srcset = file;
+    image.src = file;
+    button.setAttribute('aria-pressed', String(playing));
+    button.textContent = playing ? 'Pause animation' : 'Play animation';
+    button.disabled = false;
+  };
+  button.addEventListener('click', () => {
+    status.textContent = '';
+    if (button.getAttribute('aria-pressed') === 'true') {
+      show(button.dataset.poster, false);
+      return;
+    }
+    button.disabled = true;
+    button.textContent = 'Loading animation…';
+    const preload = new Image();
+    preload.onload = () => show(button.dataset.animation, true);
+    preload.onerror = () => {
+      show(button.dataset.poster, false);
+      status.textContent = 'Could not load the animation. Please try again.';
+    };
+    preload.src = button.dataset.animation;
+  });
+});
+</script>"""
     page = """<!doctype html>
 <html lang="en">
 <head>
@@ -116,6 +177,12 @@ def generate(renderer, output, width=800, height=600, samples=4, light_samples=4
     figcaption { padding: 16px 20px; line-height: 1.6; color: #c3ceda; }
     .additional { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 28px; }
     .additional figure { margin: 0; }
+    .animation-picture img { width: auto; max-width: 100%; margin: 0 auto; }
+    .animation-specs { display: block; color: #d1bd9e; margin: 10px 0; }
+    .animation-control { padding: 9px 14px; border: 1px solid #f2bb78; border-radius: 6px; color: #f2bb78; background: transparent; font: inherit; cursor: pointer; }
+    .animation-control:disabled { opacity: .65; cursor: wait; }
+    .animation-control:focus-visible { outline: 2px solid #f2bb78; outline-offset: 4px; }
+    .animation-status, .quality-link { display: block; margin-top: 8px; }
     @media (max-width: 600px) { .additional { grid-template-columns: 1fr; } }
     dl { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 24px 0; }
     dl div { border: 1px solid #364553; border-radius: 10px; padding: 18px; }
@@ -166,7 +233,7 @@ def generate(renderer, output, width=800, height=600, samples=4, light_samples=4
         page = page.replace(key, str(value))
     (output / "index.html").write_text(page, encoding="utf-8")
     (output / ".nojekyll").write_text("", encoding="utf-8")
-    return metadata
+
 
 
 def main():

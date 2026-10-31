@@ -91,7 +91,8 @@ class GalleryTests(unittest.TestCase):
         from render_animation import chunks
         with tempfile.TemporaryDirectory() as directory:
             output=Path(directory)
-            generate(self.renderer,output,32,24,1,1,2,extras=True)
+            commit = 'a' * 40
+            generate(self.renderer,output,32,24,1,1,2,commit=commit,extras=True)
             page=Page((output/'index.html').read_text())
             self.assertEqual(len(page.images),4)
             for image in page.images:
@@ -99,10 +100,13 @@ class GalleryTests(unittest.TestCase):
             for name in ('teapot.png','volumetric.png','clouds.png','clouds-still.png'):
                 self.assertTrue((output/name).exists())
             animation=list(chunks((output/'clouds.png').read_bytes()))
-            self.assertEqual(sum(k==b'fcTL' for k,_ in animation),8)
+            self.assertEqual(sum(k==b'fcTL' for k,_ in animation),24)
             metadata=json.loads((output/'render.json').read_text())
             self.assertEqual(len(metadata['additional_renders']),3)
+            self.assertEqual(metadata['additional_renders'][-1]['animation']['source_commit'],commit)
             self.assertIn('prefers-reduced-motion',(output/'index.html').read_text())
+            self.assertIn('Quick preview',(output/'index.html').read_text())
+            self.assertIn('Play animation',(output/'index.html').read_text())
 
 
 if __name__ == "__main__":
