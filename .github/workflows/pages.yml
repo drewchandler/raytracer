@@ -54,6 +54,10 @@ jobs:
           path: _site/
           if-no-files-found: error
           retention-days: 14
+      - name: Test scene files, assets, and CLI overrides
+        run: >-
+          python3 scripts/test_scenes.py
+          --renderer "$RAYTRACER_TOOLING/build/target/release/raytracer"
       - name: Test animated PNG export
         run: >-
           python3 scripts/test_animation.py

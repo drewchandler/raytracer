@@ -7,10 +7,14 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import struct
 import subprocess
 import time
 from render_animation import render_profile, is_quality
+
+ROOT = Path(__file__).resolve().parent.parent
+GALLERY_SCENES = ('cornell-box', 'glass-garden', 'marble-temple', 'mirror-maze')
 
 
 def bounded_int(low, high):
@@ -23,14 +27,15 @@ def bounded_int(low, high):
 
 
 def generate(renderer, output, width=800, height=600, samples=4, light_samples=4,
-             depth=6, commit="", repository="", extras=False):
+             depth=6, commit="", repository="", extras=False, scene_file=None):
     renderer = Path(renderer).resolve(strict=True)
     output = Path(output).resolve()
     output.mkdir(parents=True, exist_ok=True)
     # Use a temporary output name, so a failed render cannot pass with an old image.
     pending = output / "scene.pending.png"
     pending.unlink(missing_ok=True)
-    command = [str(renderer), "--scene", "demo", "--width", str(width),
+    source = ['--scene-file', str(Path(scene_file).resolve(strict=True))] if scene_file else ['--scene', 'demo']
+    command = [str(renderer)] + source + ["--width", str(width),
                "--height", str(height), "--samples", str(samples),
                "--light-samples", str(light_samples), "--depth", str(depth),
                "--output", str(pending)]
@@ -71,11 +76,41 @@ def generate(renderer, output, width=800, height=600, samples=4, light_samples=4
                                    jobs=2, source_commit=commit)
         additional.append(dict(image="clouds.png", width=w, height=h, title="Clouds in motion",
             description="A seamless sky loop, reflected and refracted in the spheres.", animation=animation))
+        # Ship the editable examples and their bundled assets with the gallery.
+        scene_output = output / 'scenes'
+        scene_output.mkdir(exist_ok=True)
+        (output / 'assets').mkdir(exist_ok=True)
+        for filename in ('teapot.obj', 'LICENSE-threejs.txt'):
+            asset = ROOT / 'assets' / filename
+            shutil.copyfile(asset, output / 'assets' / filename)
+        shutil.copyfile(ROOT / 'scenes' / 'scene.schema.json', scene_output / 'scene.schema.json')
+        for name in GALLERY_SCENES:
+            path = ROOT / 'scenes' / (name + '.json')
+            info = json.loads(path.read_text())
+            shutil.copyfile(path, scene_output / path.name)
+            w, h = dimensions(400, 300)
+            filename = name + '.png'
+            pending_extra = output / (filename + '.pending.png')
+            pending_extra.unlink(missing_ok=True)
+            subprocess.run([str(renderer), '--scene-file', str(path), '--width', str(w), '--height', str(h),
+                            '--samples', '2', '--light-samples', '2', '--depth', '6', '--aperture', '0',
+                            '--output', str(pending_extra)], check=True)
+            with pending_extra.open('rb') as image:
+                header = image.read(24)
+            if header[:8] != b'\x89PNG\r\n\x1a\n' or struct.unpack('>II', header[16:24]) != (w,h):
+                raise ValueError('invalid scene-file gallery render: ' + filename)
+            pending_extra.replace(output / filename)
+            additional.append(dict(image=filename, width=w, height=h, title=info['title'],
+                                   description=info['description'], scene_file='scenes/' + path.name))
 
     metadata = dict(commit=commit, repository=repository, generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
                     width=width, height=height, samples_per_axis=samples,
                     light_samples_per_axis=light_samples, max_depth=depth,
                     render_seconds=round(elapsed, 3), additional_renders=additional)
+    if scene_file:
+        info = json.loads(Path(scene_file).read_text())
+        metadata.update(scene_title=info.get('title', Path(scene_file).stem),
+                        scene_description=info.get('description', 'A scene rendered from an editable JSON file.'))
     write_page(output, metadata)
     return metadata
 
@@ -110,6 +145,10 @@ def write_page(output, metadata):
             values['width'], values['height'] = int(item['width']), int(item['height'])
             image = '<img src="{image}" width="{width}" height="{height}" loading="lazy" alt="{description}">'.format(**values)
             control, specs, css = '', '', ''
+            if 'scene_file' in item:
+                if not re.fullmatch(r'scenes/[A-Za-z0-9_.-]+\.json', item['scene_file']):
+                    raise ValueError('invalid scene source filename')
+                control = '<a class="scene-source" href="{}">Scene JSON</a>'.format(item['scene_file'])
             if 'animation' in item:
                 poster = item['image'][:-4] + '-still.png'
                 image = image.replace('src="' + values['image'] + '"', 'src="' + poster + '"')
@@ -200,15 +239,14 @@ document.querySelectorAll('.animation-control').forEach(button => {
     <header>
       <div class="eyebrow">Built from source · rendered on the CPU</div>
       <h1>Raytracer</h1>
-      <p class="intro">Procedural materials, frosted glass, and clouds in motion.
-      This image is generated by the Rust renderer, then published with the code that produced it.</p>
+      <p class="intro">Procedural materials, glass, clouds, and scenes you can edit.
+      These images are generated by the Rust renderer, then published with the code that produced them.</p>
     </header>
     <figure>
       <a href="scene.png" aria-label="Open the rendered scene at full resolution">
-        <img src="scene.png" width="WIDTH" height="HEIGHT" alt="Marble, wood, and stone spheres alongside chrome and frosted glass on a checkerboard beneath a cloudy sky.">
+        <img src="scene.png" width="WIDTH" height="HEIGHT" alt="SCENE_DESCRIPTION">
       </a>
-      <figcaption>Marble, wood, and stone alongside chrome and frosted glass,
-      under a cloudy sky with soft shadows and a gently textured checkerboard.</figcaption>
+      <figcaption><strong>SCENE_TITLE</strong><br>SCENE_DESCRIPTION</figcaption>
     </figure>
     <dl>
       <div><dt>Resolution</dt><dd>WIDTH × HEIGHT</dd></div>
@@ -227,8 +265,12 @@ document.querySelectorAll('.animation-control').forEach(button => {
 </body>
 </html>
 """
+    scene_title = html.escape(str(metadata.get('scene_title', 'Procedural materials')), quote=True)
+    scene_description = html.escape(str(metadata.get('scene_description',
+        'Marble, wood, and stone alongside chrome and frosted glass, under a cloudy sky with soft shadows and a gently textured checkerboard.')), quote=True)
     for key, value in dict(WIDTH=width, HEIGHT=height, PIXEL_SAMPLES=samples * samples,
                            LIGHT_SAMPLES=light_samples * light_samples, DEPTH=depth,
+                           SCENE_TITLE=scene_title, SCENE_DESCRIPTION=scene_description,
                            TIMESTAMP=timestamp, EXTRAS=extra_html, SOURCE=source).items():
         page = page.replace(key, str(value))
     (output / "index.html").write_text(page, encoding="utf-8")
@@ -246,10 +288,11 @@ def main():
     parser.add_argument("--light-samples", type=bounded_int(1, 64), default=4)
     parser.add_argument("--depth", type=bounded_int(0, 16), default=6)
     parser.add_argument("--extras", action="store_true", help="also render the teapot, volumetric clouds, and an animated PNG")
+    parser.add_argument("--scene-file", type=Path, help="render a JSON scene as the main gallery image")
     args = parser.parse_args()
     generate(args.renderer, args.output, args.width, args.height, args.samples,
              args.light_samples, args.depth, os.environ.get("GITHUB_SHA", ""),
-             os.environ.get("GITHUB_REPOSITORY", ""), args.extras)
+             os.environ.get("GITHUB_REPOSITORY", ""), args.extras, args.scene_file)
     print("Gallery written to {}".format(args.output))
 
 

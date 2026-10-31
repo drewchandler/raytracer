@@ -8,3 +8,4 @@ name = "raytracer"
 
 [dependencies]
 image="0.7.0"
+rustc-serialize="=0.3.18"

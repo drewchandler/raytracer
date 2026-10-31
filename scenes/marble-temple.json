@@ -1,0 +1,403 @@
+{
+  "$schema": "./scene.schema.json",
+  "version": 1,
+  "title": "Marble temple",
+  "description": "Veined marble columns shelter a copper Utah teapot beneath the cloudy sky.",
+  "render": {
+    "width": 640,
+    "height": 480,
+    "samples": 4,
+    "light_samples": 3,
+    "depth": 7
+  },
+  "camera": {
+    "from": [8, 5.8, 14],
+    "at": [0, 2, 0],
+    "fov": 45
+  },
+  "materials": {
+    "marble": {
+      "color": [235, 230, 218],
+      "reflective": 0.12,
+      "roughness": 0.12,
+      "pattern": {
+        "type": "marble",
+        "color_a": [239, 234, 218],
+        "color_b": [56, 72, 92],
+        "size": 0.6
+      }
+    },
+    "copper": {
+      "color": [206, 124, 64],
+      "reflective": 0.5,
+      "roughness": 0.06,
+      "shininess": 180
+    },
+    "ground": {
+      "reflective": 0.08,
+      "pattern": {
+        "type": "stone",
+        "color_a": [40, 52, 46],
+        "color_b": [129, 142, 121],
+        "size": 0.5
+      },
+      "bump": {
+        "scale": 5,
+        "strength": 0.018,
+        "seed": 9
+      }
+    }
+  },
+  "lights": [
+    {
+      "type": "area",
+      "corner": [-4.5, 7, 2],
+      "u": [3, 0, 0],
+      "v": [0, 0, 2],
+      "color": [255, 242, 224],
+      "intensity": 160
+    },
+    {
+      "type": "directional",
+      "direction": [-1, -2, -1],
+      "color": [190, 215, 255],
+      "intensity": 0.2
+    },
+    {
+      "type": "area",
+      "corner": [-1, 5.25, -1],
+      "u": [2, 0, 0],
+      "v": [0, 0, 2],
+      "color": [255, 228, 190],
+      "intensity": 35
+    }
+  ],
+  "objects": [
+    {
+      "type": "plane",
+      "material": "ground"
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [4, 0.2, 4]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [0, 0.2, 0]
+        }
+      ]
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [0.58, 0.18, 0.58]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [-3, 0.58, -3]
+        }
+      ]
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [0.32, 2.25, 0.32]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [-3, 3.01, -3]
+        }
+      ]
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [0.58, 0.16, 0.58]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [-3, 5.42, -3]
+        }
+      ]
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [0.58, 0.18, 0.58]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [-3, 0.58, 0]
+        }
+      ]
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [0.32, 2.25, 0.32]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [-3, 3.01, 0]
+        }
+      ]
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [0.58, 0.16, 0.58]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [-3, 5.42, 0]
+        }
+      ]
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [0.58, 0.18, 0.58]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [-3, 0.58, 3]
+        }
+      ]
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [0.32, 2.25, 0.32]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [-3, 3.01, 3]
+        }
+      ]
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [0.58, 0.16, 0.58]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [-3, 5.42, 3]
+        }
+      ]
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [0.58, 0.18, 0.58]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [3, 0.58, -3]
+        }
+      ]
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [0.32, 2.25, 0.32]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [3, 3.01, -3]
+        }
+      ]
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [0.58, 0.16, 0.58]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [3, 5.42, -3]
+        }
+      ]
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [0.58, 0.18, 0.58]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [3, 0.58, 0]
+        }
+      ]
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [0.32, 2.25, 0.32]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [3, 3.01, 0]
+        }
+      ]
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [0.58, 0.16, 0.58]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [3, 5.42, 0]
+        }
+      ]
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [0.58, 0.18, 0.58]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [3, 0.58, 3]
+        }
+      ]
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [0.32, 2.25, 0.32]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [3, 3.01, 3]
+        }
+      ]
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [0.58, 0.16, 0.58]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [3, 5.42, 3]
+        }
+      ]
+    },
+    {
+      "type": "cube",
+      "material": "marble",
+      "transform": [
+        {
+          "scale": [3.8, 0.18, 3.8]
+        },
+        {
+          "rotate_y": 0
+        },
+        {
+          "translate": [0, 5.76, 0]
+        }
+      ]
+    },
+    {
+      "type": "mesh",
+      "path": "../assets/teapot.obj",
+      "fit": 2.7,
+      "material": "copper",
+      "transform": [
+        {
+          "rotate_y": -25
+        },
+        {
+          "translate": [0, 0.4, 0]
+        }
+      ]
+    }
+  ],
+  "environment": {
+    "type": "clouds",
+    "seed": 17
+  },
+  "haze": {
+    "start": 35,
+    "end": 150
+  }
+}

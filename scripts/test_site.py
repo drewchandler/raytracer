@@ -94,7 +94,7 @@ class GalleryTests(unittest.TestCase):
             commit = 'a' * 40
             generate(self.renderer,output,32,24,1,1,2,commit=commit,extras=True)
             page=Page((output/'index.html').read_text())
-            self.assertEqual(len(page.images),4)
+            self.assertEqual(len(page.images),8)
             for image in page.images:
                 self.assertTrue((output/image['src']).is_file())
             for name in ('teapot.png','volumetric.png','clouds.png','clouds-still.png'):
@@ -102,11 +102,34 @@ class GalleryTests(unittest.TestCase):
             animation=list(chunks((output/'clouds.png').read_bytes()))
             self.assertEqual(sum(k==b'fcTL' for k,_ in animation),24)
             metadata=json.loads((output/'render.json').read_text())
-            self.assertEqual(len(metadata['additional_renders']),3)
-            self.assertEqual(metadata['additional_renders'][-1]['animation']['source_commit'],commit)
+            self.assertEqual(len(metadata['additional_renders']),7)
+            animation=next(item['animation'] for item in metadata['additional_renders'] if 'animation' in item)
+            self.assertEqual(animation['source_commit'],commit)
+            for name in ('cornell-box','glass-garden','marble-temple','mirror-maze'):
+                self.assertIn('scenes/'+name+'.json',page.links)
+                self.assertTrue((output/'scenes'/(name+'.json')).is_file())
+            self.assertTrue((output/'assets'/'teapot.obj').is_file())
+            self.assertTrue((output/'assets'/'LICENSE-threejs.txt').is_file())
             self.assertIn('prefers-reduced-motion',(output/'index.html').read_text())
             self.assertIn('Quick preview',(output/'index.html').read_text())
             self.assertIn('Play animation',(output/'index.html').read_text())
+            result=subprocess.run([str(self.renderer),'--scene-file',str(output/'scenes'/'marble-temple.json'),
+                                   '--validate'],cwd=output,capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+
+    def test_main_gallery_scene_uses_file_camera_and_escaped_descriptions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);path=root/'scene.json'
+            description='Glass <script>alert(1)</script> " onerror="alert(1)'
+            path.write_text(json.dumps(dict(version=1,title='<img src=x onerror=alert(1)>',description=description,
+                camera={'from':[0,0,3],'at':[0,0,0]},objects=[{'type':'sphere','color':[255,0,0]}])))
+            generate(self.renderer,root/'site',24,18,1,1,2,scene_file=path)
+            text=(root/'site'/'index.html').read_text();page=Page(text)
+            self.assertNotIn('<script>',text)
+            self.assertNotIn('<img src=x',text)
+            self.assertEqual(page.images[0]['alt'],description)
+            metadata=json.loads((root/'site'/'render.json').read_text())
+            self.assertEqual(metadata['scene_description'],description)
 
 
 if __name__ == "__main__":

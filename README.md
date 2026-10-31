@@ -123,12 +123,22 @@ packages. Its `--width`, `--height`, `--samples`, `--light-samples`, and `--dept
 options control the rendered image. `GITHUB_SHA` and `GITHUB_REPOSITORY` supply
 the source link automatically on Actions; local runs show “Local render”.
 With `--extras`, the gallery also contains a Utah teapot render, volumetric clouds,
-and a quick animation preview. Animations start on a still poster and have
+four editable example scenes with downloadable JSON, and a quick animation preview.
+Animations start on a still poster and have
 play/pause controls; the preview is displayed at its native size. The Pages
 workflow enables these views automatically. A separate quality workflow later
 replaces the preview with the full-quality animation from the same commit. The generated site is ignored by Git.
 
 ## Features
+
+Scenes can also be edited as JSON, with named materials, cameras, lights,
+transforms, procedural skies, and relative OBJ/panorama assets. See the
+[scene format and examples](scenes/README.md). Render one with:
+
+```sh
+./scripts/cargo.sh run --release --locked -- \
+  --scene-file scenes/glass-garden.json --output renders/garden.png
+```
 
 - Ambient, Lambert diffuse, and Phong specular shading with multiple colored
   lights. Point lights have inverse-square falloff; directional lights have
@@ -346,6 +356,7 @@ Animation and gallery integration tests:
 ```sh
 python3 scripts/test_site.py --renderer "${RAYTRACER_TOOLING:-/workspace/.raytracer-tools}/build/target/release/raytracer"
 python3 scripts/test_animation.py --renderer "${RAYTRACER_TOOLING:-/workspace/.raytracer-tools}/build/target/release/raytracer"
+python3 scripts/test_scenes.py --renderer "${RAYTRACER_TOOLING:-/workspace/.raytracer-tools}/build/target/release/raytracer"
 ```
 
 Additional tests check Perlin continuity and seeding, procedural materials, bump

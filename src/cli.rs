@@ -3,6 +3,8 @@ use super::raytracer::RenderSettings;
 pub const HELP: &'static str = "Usage: raytracer [options]
 
   --scene NAME           demo, classic, teapot, or original (default: demo)
+  --scene-file PATH      Load an editable JSON scene; CLI flags override file settings
+  --validate             Validate a scene file and its assets without rendering
   --obj PATH             Import an OBJ in the teapot scene (auto-centered and fitted)
   --clouds MODE          procedural or volume (default: procedural)
   --cloud-steps N        Volume integration steps, 8..128 (default: 24)
@@ -38,14 +40,18 @@ pub struct Options {
     pub clouds: String,
     pub cloud_steps: u32,
     pub time: f64,
-    pub cloud_loop: f64
+    pub cloud_loop: f64,
+    pub scene_file: Option<String>,
+    pub check_only: bool,
+    explicit: Vec<String>
 }
 
 impl Default for Options {
     fn default() -> Options {
         Options { scene: "demo".to_string(), output: "out.png".to_string(), width: 640, height: 480,
             render: RenderSettings::default(), light_samples: 3, aperture: 0.0, focus: 11.0, sky: None, sky_rotation: 0.0,
-            obj:None,clouds:"procedural".to_string(),cloud_steps:24,time:0.0,cloud_loop:0.0 }
+            obj:None,clouds:"procedural".to_string(),cloud_steps:24,time:0.0,cloud_loop:0.0,
+            scene_file:None,check_only:false,explicit:Vec::new() }
     }
 }
 
@@ -70,7 +76,9 @@ impl Options {
         while index < args.len() {
             let flag = args[index].as_str();
             if flag == "--help" || flag == "-h" { return Ok(None); }
+            if flag == "--validate" { options.check_only=true; index+=1; continue; }
             if index + 1 == args.len() { return Err(format!("Missing value for {}", flag)); }
+            options.explicit.push(flag.to_string());
             let value = args[index + 1].as_str();
             match flag {
                 "--width" => options.width = try!(integer(flag, value, 1, 8192)),
@@ -87,6 +95,7 @@ impl Options {
                 },
                 "--output" => options.output = value.to_string(),
                 "--scene" => options.scene = value.to_string(),
+                "--scene-file" => options.scene_file = Some(value.to_string()),
                 "--obj" => options.obj=Some(value.to_string()),
                 "--clouds" => options.clouds=value.to_string(),
                 "--cloud-steps" => options.cloud_steps=try!(integer(flag,value,8,128)),
@@ -105,11 +114,22 @@ impl Options {
         if options.clouds!="procedural" && options.clouds!="volume" {return Err("--clouds must be procedural or volume".to_string());}
         if options.sky.is_some() && options.clouds=="volume" {return Err("Choose --sky or --clouds volume, not both".to_string());}
         if options.obj.is_some() && options.scene!="teapot" {return Err("--obj requires --scene teapot".to_string());}
+        if options.scene_file.is_some() && (options.specified("--scene") || options.obj.is_some()) {
+            return Err("--scene-file cannot be combined with --scene or --obj".to_string());
+        }
+        if options.check_only && options.scene_file.is_none() { return Err("--validate requires --scene-file".to_string()); }
         if !options.output.to_lowercase().ends_with(".png") { return Err("--output must have a .png extension".to_string()); }
-        if options.aperture > 0.0 && options.render.samples_per_axis == 1 {
+        if options.scene_file.is_none() { try!(options.validate_sampling()); }
+        Ok(Some(options))
+    }
+
+    pub fn specified(&self,flag: &str) -> bool { self.explicit.iter().any(|f| f==flag) }
+
+    pub fn validate_sampling(&self) -> Result<(),String> {
+        if self.aperture > 0.0 && self.render.samples_per_axis == 1 {
             return Err("Depth of field requires --samples of at least 2".to_string());
         }
-        Ok(Some(options))
+        Ok(())
     }
 }
 

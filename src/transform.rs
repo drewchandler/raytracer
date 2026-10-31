@@ -35,6 +35,10 @@ fn apply(matrix: &Matrix, x: f64, y: f64, z: f64, w: f64) -> [f64; 3] {
 impl Transform {
     pub fn identity() -> Transform { Transform { forward: identity(), inverse: identity() } }
 
+    pub fn is_finite(&self) -> bool {
+        self.forward.iter().chain(self.inverse.iter()).all(|row|row.iter().all(|v|v.is_finite()))
+    }
+
     /// Chained operations are applied in reading order: scale, rotate, translate.
     pub fn then(&self, next: Transform) -> Transform {
         Transform {
