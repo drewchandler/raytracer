@@ -123,8 +123,10 @@ packages. Its `--width`, `--height`, `--samples`, `--light-samples`, and `--dept
 options control the rendered image. `GITHUB_SHA` and `GITHUB_REPOSITORY` supply
 the source link automatically on Actions; local runs show “Local render”.
 With `--extras`, the gallery also contains a Utah teapot render, volumetric clouds,
-and an animated PNG. Reduced-motion browser preferences select its still poster.
-The Pages workflow enables these views automatically. The generated site is ignored by Git.
+and a quick animation preview. Animations start on a still poster and have
+play/pause controls; the preview is displayed at its native size. The Pages
+workflow enables these views automatically. A separate quality workflow later
+replaces the preview with the full-quality animation from the same commit. The generated site is ignored by Git.
 
 ## Features
 
@@ -190,20 +192,82 @@ not a microfacet path tracer.
 ./scripts/cargo.sh run --release --locked -- \
   --scene classic --clouds volume --cloud-steps 32 --samples 2 --time 8
 
-# An animated PNG with a still poster and timing metadata; no Python packages needed
+# A clearly labeled, seamless quick preview
 python3 scripts/render_animation.py \
   --renderer "${RAYTRACER_TOOLING:-/workspace/.raytracer-tools}/build/target/release/raytracer" \
-  --frames 12 --fps 6 --step 2 --output renders/clouds.png
+  --preset preview --output renders/preview/clouds.png
+
+# A full-quality, 24 FPS seamless animation (CPU intensive)
+python3 scripts/render_animation.py \
+  --renderer "${RAYTRACER_TOOLING:-/workspace/.raytracer-tools}/build/target/release/raytracer" \
+  --preset quality --jobs 4 --cache-dir renders/.animation-cache \
+  --output renders/quality/clouds.png
 ```
 
 For the prepared cloud environment, the renderer path is
 `/workspace/.raytracer-tools/build/target/release/raytracer` if
-`RAYTRACER_TOOLING` is unset. Animation advances the same continuous noise field,
-including its reflections and refractions. The APNG repeats its frame sequence;
-the wind trajectory itself is not a seamless periodic loop. `--step` controls
-seconds of simulated cloud motion per frame; `--fps` controls playback speed.
-The exporter checks frame checksums and dimensions, and only replaces its output
-after every render succeeds. It also writes `clouds-still.png` and `clouds.json`.
+`RAYTRACER_TOOLING` is unset. No third-party Python packages are required.
+
+| Setting | Quick preview | Quality render |
+| --- | --- | --- |
+| Resolution | 320×240 | 640×480 |
+| Pixel samples | 2×2 (4) | 4×4 (16) |
+| Area-light samples | 2×2 (4) | 2×2 (4) |
+| Reflection/refraction bounces | 5 | 6 |
+| Frame rate | 12 FPS | 24 FPS |
+| Frames | 24 | 48 |
+| Playback duration | 2 seconds | 2 seconds |
+
+The clouds follow a closed orbit through the 3D noise field, including their
+reflections and refractions. Position and velocity match at the loop boundary.
+Frames sample the cycle at uniform intervals and exclude the duplicate endpoint,
+so playback does not pause or jump at the seam. `--cloud-loop SECONDS` enables the
+same periodic motion for individual renderer invocations. `--loop-duration` can
+choose a different noise-cycle duration; by default it matches frames/FPS.
+The optional legacy `--step` flag explicitly selects linear, non-looping wind.
+
+The quality preset uses small 1/24-second time steps, rather than the original
+preview's three simulated seconds per frame. `--frames 96` at 24 FPS gives a
+four-second loop. Resolution, pixel/light samples, bounce depth, cloud integration
+steps, frame rate, and worker count can all be overridden on the command line.
+
+The exporter renders frames in parallel and checks PNG checksums, dimensions,
+and timing. A persistent cache is keyed by the renderer's SHA-256 and all render
+settings, including exact frame times. A retry reuses only matching, complete
+frames; corrupt frames and changed settings trigger rerenders. The output is
+replaced only after every frame succeeds. It also writes a still poster and JSON
+metadata with the actual quality settings and source commit. APNG is lossless;
+high-quality files can be large and take minutes to render. The gallery keeps the
+poster visible until the user chooses to load/play the animation, and supports
+pausing it again.
+
+### Separate quality workflow
+
+`.github/workflows/animation-quality.yml` starts after a successful `master`
+gallery build, or can be run manually from the Actions tab. It renders the quality
+preset separately, with two workers and a resumable frame cache; it does not
+block the quick gallery build or PR checks. The workflow offers 48- or 96-frame
+renders and uploads `raytracer-quality-animation` as a downloadable artifact.
+
+For publication, it downloads the quick gallery for the exact same source SHA,
+validates the animation's dimensions, timing, quality settings, and source SHA,
+and replaces only the animation and its poster/metadata. Existing still images
+are retained. The gallery is republished through GitHub Pages. Both Pages
+publishers serialize deployments and check that `master` still points to the
+rendered SHA; obsolete jobs skip publication. A manual run on a feature branch,
+or without a matching successful gallery build, produces an artifact only.
+
+You can attach a completed local render without rerendering the still images:
+
+```sh
+python3 scripts/attach_animation.py --site _site \
+  --animation renders/quality/clouds.png --require-quality
+```
+
+Published builds additionally require `--expected-commit` to bind the animation
+to its matching gallery. The quick build stays labeled “Quick preview” until a
+validated quality render is attached, at which point it shows “High quality” and
+the actual resolution, frame rate, and sample count.
 
 The volume is a world-space cloud layer between y=20 and y=32, sampled along
 camera and secondary rays with Beer–Lambert extinction and single sunlight

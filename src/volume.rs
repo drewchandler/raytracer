@@ -14,6 +14,7 @@ pub struct CloudVolume {
     pub seed: u32,
     pub time: f64,
     pub steps: u32,
+    pub loop_period: f64,
 }
 
 impl CloudVolume {
@@ -23,6 +24,7 @@ impl CloudVolume {
             seed: seed,
             time: 0.0,
             steps: steps,
+            loop_period: 0.0,
         }
     }
     pub fn density(&self, p: Point) -> f64 {
@@ -31,11 +33,12 @@ impl CloudVolume {
             return 0.0;
         }
         let noise = Perlin::new(self.seed);
+        let offset=::motion::cloud_offset(self.time,self.loop_period,Vector::new(0.04,0.0,0.015));
         let q = Vector::new(
-            p.x * 0.045 + self.time * 0.04,
+            p.x * 0.045,
             p.y * 0.16,
-            p.z * 0.045 + self.time * 0.015,
-        );
+            p.z * 0.045,
+        )+offset;
         let weather = 0.5 + 0.5 * noise.sample(Vector::new(p.x * 0.015, 0.37, p.z * 0.015));
         let shape = 0.5 + 0.5 * noise.fbm(q, 3);
         ((shape - 0.52 + (weather - 0.5) * 0.25) * 4.5)

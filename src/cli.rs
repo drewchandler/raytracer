@@ -7,6 +7,7 @@ pub const HELP: &'static str = "Usage: raytracer [options]
   --clouds MODE          procedural or volume (default: procedural)
   --cloud-steps N        Volume integration steps, 8..128 (default: 24)
   --time SECONDS         Cloud animation time (default: 0)
+  --cloud-loop SECONDS   Periodic cloud motion with a seamless loop (default: linear wind)
   --output PATH          PNG output path (default: out.png)
   --width N              Image width, 1..8192 (default: 640)
   --height N             Image height, 1..8192 (default: 480)
@@ -36,14 +37,15 @@ pub struct Options {
     pub obj: Option<String>,
     pub clouds: String,
     pub cloud_steps: u32,
-    pub time: f64
+    pub time: f64,
+    pub cloud_loop: f64
 }
 
 impl Default for Options {
     fn default() -> Options {
         Options { scene: "demo".to_string(), output: "out.png".to_string(), width: 640, height: 480,
             render: RenderSettings::default(), light_samples: 3, aperture: 0.0, focus: 11.0, sky: None, sky_rotation: 0.0,
-            obj:None,clouds:"procedural".to_string(),cloud_steps:24,time:0.0 }
+            obj:None,clouds:"procedural".to_string(),cloud_steps:24,time:0.0,cloud_loop:0.0 }
     }
 }
 
@@ -92,6 +94,7 @@ impl Options {
                     Ok(t) if t.is_finite() && t.abs()<=1000000.0=>t,
                     _=>return Err("--time must be finite and within +/-1000000 seconds".to_string())
                 },
+                "--cloud-loop" => options.cloud_loop=try!(number(flag,value,false)),
                 _ => return Err(format!("Unknown option: {} (use --help)", flag))
             }
             index += 2;
@@ -134,7 +137,8 @@ mod tests {
             vec!["--bogus", "3"], vec!["--aperture", "0.1", "--samples", "1"],
             vec!["--sky-rotation", "NaN"], vec!["--sky-rotation", "inf"], vec!["--sky"],
             vec!["--time","NaN"],vec!["--cloud-steps","0"],vec!["--clouds","bad"],
-            vec!["--sky","a.png","--clouds","volume"],vec!["--obj","a.obj"]] {
+            vec!["--sky","a.png","--clouds","volume"],vec!["--obj","a.obj"],
+            vec!["--cloud-loop","0"],vec!["--cloud-loop","NaN"]] {
             assert!(Options::parse(&args(words)).is_err(), "unexpected success: {:?}", words);
         }
     }

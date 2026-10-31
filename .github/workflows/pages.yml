@@ -70,15 +70,33 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    concurrency:
+      group: pages-publication
+      cancel-in-progress: false
     permissions:
+      contents: read
       pages: write
       id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Skip publication if master has moved on
+        id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current_master=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/master" --jq '.object.sha')
+          if [ "$current_master" = "$GITHUB_SHA" ]; then
+            echo 'publish=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'publish=false' >> "$GITHUB_OUTPUT"
+            echo 'A newer master commit exists; keeping its gallery.'
+          fi
       - name: Check GitHub Pages configuration
+        if: steps.current.outputs.publish == 'true'
         uses: actions/configure-pages@v5
       - name: Deploy the rendered gallery
+        if: steps.current.outputs.publish == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
